@@ -1,11 +1,11 @@
 {
-  "name": "StudyBuddy – Flashcard Quiz Maker",
+  "name": "StudyBuddy \u2013 Flashcard Quiz Maker",
   "short_name": "StudyBuddy",
   "description": "Scan PDFs or images and turn them into flashcard quizzes!",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#fdf4ff",
-  "theme_color": "#e91e8c",
+  "background_color": "#e0f2fe",
+  "theme_color": "#2563eb",
   "orientation": "portrait",
   "icons": [
     {
