@@ -1918,7 +1918,7 @@ export default function App() {
           <h1 style={{ margin: 0, fontSize: 17, fontWeight: 900 }} className="gradient-text">
             QuizTime
           </h1>
-          <p style={{ margin: 0, fontSize: 11, color: "var(--text-muted)" }}>Your AI Study Partner</p>
+          <p style={{ margin: 0, fontSize: 11, color: "var(--text-muted)" }}>Your AI Study Partner - Developed b John Lloyd Ambrady</p>
         </div>
         <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
           {!hasApiKey && (
