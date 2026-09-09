@@ -1,0 +1,22 @@
+{
+  "name": "StudyBuddy – Flashcard Quiz Maker",
+  "short_name": "StudyBuddy",
+  "description": "Scan PDFs or images and turn them into flashcard quizzes!",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#fdf4ff",
+  "theme_color": "#e91e8c",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/logo.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/logo.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
