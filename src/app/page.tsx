@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, type ReactNode } from "react";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 interface Flashcard {
@@ -27,7 +27,89 @@ interface StudySession {
 }
 
 type Tab = "home" | "upload" | "quiz" | "sessions";
-type QuizMode = "flashcard" | "review";
+type QuizMode = "select" | "study" | "exam";
+
+interface ExamQuestion {
+  card: Flashcard;
+  options: string[];
+  correctIndex: number;
+}
+
+interface ExamAnswer {
+  card: Flashcard;
+  chosenIndex: number;
+  chosenOption: string;
+  correctIndex: number;
+  isCorrect: boolean;
+  points: number;
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+function shuffle<T>(arr: T[]): T[] {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+const FALLBACK_OPTIONS = [
+  "None of the above",
+  "All of the above",
+  "Not mentioned in the material",
+  "It cannot be determined",
+];
+
+const normalize = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
+
+/** Build multiple-choice questions: correct answer + 3 distractors taken from other cards. */
+function buildExamQuestions(cards: Flashcard[]): ExamQuestion[] {
+  return shuffle(cards).map((card) => {
+    const correct = card.answer;
+    const pool = cards
+      .filter((c) => c !== card && normalize(c.answer) !== normalize(correct))
+      .map((c) => c.answer);
+
+    // Prefer distractors of a similar length to the correct answer so the
+    // odd-one-out isn't obvious at a glance.
+    pool.sort((a, b) => Math.abs(a.length - correct.length) - Math.abs(b.length - correct.length));
+
+    const seen = new Set([normalize(correct)]);
+    const distractors: string[] = [];
+    for (const candidate of [...shuffle(pool.slice(0, 12)), ...FALLBACK_OPTIONS]) {
+      if (distractors.length >= 3) break;
+      const key = normalize(candidate);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      distractors.push(candidate);
+    }
+
+    const options = shuffle([correct, ...distractors]);
+    return { card, options, correctIndex: options.indexOf(correct) };
+  });
+}
+
+/** Points for a correct answer: 10 base + difficulty bonus. */
+function pointsFor(card: Flashcard): number {
+  const bonus = card.difficulty === "hard" ? 10 : card.difficulty === "medium" ? 5 : 0;
+  return 10 + bonus;
+}
+
+function gradeFor(pct: number) {
+  if (pct >= 95) return { grade: "A+", message: "Flawless! You nailed it! 🏆", emoji: "🏆", color: "#10b981" };
+  if (pct >= 90) return { grade: "A", message: "Excellent work! 🎉", emoji: "🎉", color: "#22c55e" };
+  if (pct >= 80) return { grade: "B", message: "Great job, keep it up! 💪", emoji: "🌟", color: "#3b82f6" };
+  if (pct >= 70) return { grade: "C", message: "Good effort — review and retry! 📖", emoji: "📖", color: "#6366f1" };
+  if (pct >= 60) return { grade: "D", message: "Keep studying, you'll get there! 💫", emoji: "💫", color: "#f59e0b" };
+  return { grade: "F", message: "Don't give up — study mode can help! 💙", emoji: "📚", color: "#f43f5e" };
+}
+
+function formatTime(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return m > 0 ? `${m}m ${s}s` : `${s}s`;
+}
 
 // ─── Icons ───────────────────────────────────────────────────────────────────
 const Icons = {
@@ -121,11 +203,41 @@ const Icons = {
       <path d="M20 5H4c-1.1 0-1.99.9-1.99 2L2 17c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm-9 3h2v2h-2V8zm0 3h2v2h-2v-2zM8 8h2v2H8V8zm0 3h2v2H8v-2zm-1 2H5v-2h2v2zm0-3H5V8h2v2zm9 7H8v-2h8v2zm0-4h-2v-2h2v2zm0-3h-2V8h2v2zm3 3h-2v-2h2v2zm0-3h-2V8h2v2z" />
     </svg>
   ),
+  Book: () => (
+    <svg viewBox="0 0 24 24" fill="currentColor">
+      <path d="M18 2H9c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h9c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H9V4h9v12zM3 15v-2h2v2H3zm0 4v-2h2v2H3zm0-8V9h2v2H3zm0-4V5h2v2H3zm0 12c-1.1 0-2 .9-2 2h2v-2zm0-16c-1.1 0-2 .9-2 2h2V3z" />
+    </svg>
+  ),
+  Exam: () => (
+    <svg viewBox="0 0 24 24" fill="currentColor">
+      <path d="M19 3h-4.18C14.4 1.84 13.3 1 12 1s-2.4.84-2.82 2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 0c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1zm-1.5 15.5L7 15l1.41-1.41L10.5 15.67l4.59-4.59L16.5 12.5l-6 6z" />
+    </svg>
+  ),
+  Flame: () => (
+    <svg viewBox="0 0 24 24" fill="currentColor">
+      <path d="M13.5 1.5c.3 2.4-.6 4.2-2.2 5.6-1.1 1-2.3 1.7-2.3 3.4 0 .8.3 1.5.8 2-.1-2.6 1.6-3.9 2.7-5C13.6 6.3 14.3 4.7 13.5 1.5zM11 22c-3.3 0-6-2.5-6-5.6 0-2.4 1.2-3.9 2.6-5.3 1-1 2-2 2.4-3.2.5 1.2 1.4 1.9 2.3 2.6 1.2 1 2.7 2.2 2.7 4.3C17 19.1 14.4 22 11 22z" />
+    </svg>
+  ),
+  Clock: () => (
+    <svg viewBox="0 0 24 24" fill="currentColor">
+      <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2zm4.2 14.2L11 13V7h1.5v5.2l4.5 2.7-.8 1.3z" />
+    </svg>
+  ),
+  Target: () => (
+    <svg viewBox="0 0 24 24" fill="currentColor">
+      <path d="M12 2a10 10 0 100 20 10 10 0 000-20zm0 18a8 8 0 110-16 8 8 0 010 16zm0-13a5 5 0 100 10 5 5 0 000-10zm0 8a3 3 0 110-6 3 3 0 010 6z" />
+    </svg>
+  ),
+  Shuffle: () => (
+    <svg viewBox="0 0 24 24" fill="currentColor">
+      <path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z" />
+    </svg>
+  ),
 };
 
 // ─── Confetti ────────────────────────────────────────────────────────────────
 function launchConfetti() {
-  const colors = ["#ff6b9d", "#a855f7", "#fbbf24", "#10b981", "#60a5fa", "#f43f5e"];
+  const colors = ["#3b82f6", "#7c3aed", "#38bdf8", "#10b981", "#fbbf24", "#f43f5e"];
   for (let i = 0; i < 60; i++) {
     setTimeout(() => {
       const el = document.createElement("div");
@@ -161,8 +273,8 @@ function showToast(msg: string, emoji = "✨") {
   }, 2800);
 }
 
-// ─── FlashCard Component ─────────────────────────────────────────────────────
-function FlashCard({
+// ─── Study Mode: traditional flashcard (flip to reveal) ─────────────────────
+function StudyCard({
   card,
   index,
   total,
@@ -184,12 +296,6 @@ function FlashCard({
   const [flipped, setFlipped] = useState(false);
   const [showHint, setShowHint] = useState(false);
   const [answering, setAnswering] = useState(false);
-
-  useEffect(() => {
-    setFlipped(false);
-    setShowHint(false);
-    setAnswering(false);
-  }, [index]);
 
   const handleFlip = () => {
     if (!flipped) setFlipped(true);
@@ -214,8 +320,8 @@ function FlashCard({
   const difficultyColor = {
     easy: "#10b981",
     medium: "#f59e0b",
-    hard: "#e91e8c",
-  }[card.difficulty] || "#a855f7";
+    hard: "#f43f5e",
+  }[card.difficulty] || "#6366f1";
 
   return (
     <div className="animate-fade-in" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -256,8 +362,8 @@ function FlashCard({
               alignItems: "center",
               justifyContent: "center",
               padding: 28,
-              background: "linear-gradient(135deg, #fff0f9, #f5f0ff)",
-              border: "2px solid rgba(233,30,140,0.15)",
+              background: "linear-gradient(135deg, #eff6ff, #eef2ff)",
+              border: "2px solid rgba(37,99,235,0.15)",
             }}
           >
             <div style={{ fontSize: 36, marginBottom: 12 }}>🤔</div>
@@ -280,8 +386,8 @@ function FlashCard({
               alignItems: "center",
               justifyContent: "center",
               padding: 28,
-              background: "linear-gradient(135deg, #f0fff8, #f0f4ff)",
-              border: "2px solid rgba(16,185,129,0.2)",
+              background: "linear-gradient(135deg, #ecfeff, #eff6ff)",
+              border: "2px solid rgba(16,185,129,0.25)",
             }}
           >
             <div style={{ fontSize: 32, marginBottom: 10 }}>💡</div>
@@ -396,13 +502,13 @@ function ReviewSummary({
           width: 140,
           height: 140,
           borderRadius: "50%",
-          background: "linear-gradient(135deg, var(--pink-dark), var(--purple))",
+          background: "linear-gradient(135deg, var(--accent-dark), var(--purple))",
           display: "flex",
           flexDirection: "column",
           alignItems: "center",
           justifyContent: "center",
           margin: "0 auto 24px",
-          boxShadow: "0 8px 32px rgba(233,30,140,0.3)",
+          boxShadow: "0 8px 32px rgba(37,99,235,0.3)",
         }}
       >
         <span style={{ fontSize: 40, fontWeight: 900, color: "white" }}>{pct}%</span>
@@ -412,9 +518,9 @@ function ReviewSummary({
       {/* Stats */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 24 }}>
         {[
-          { label: "Total", value: total, color: "#a855f7", bg: "#f5f0ff" },
+          { label: "Total", value: total, color: "#3b82f6", bg: "#eef2ff" },
           { label: "Known ✅", value: known, color: "#10b981", bg: "#f0fff8" },
-          { label: "Review 📚", value: total - known, color: "#e91e8c", bg: "#fff0f9" },
+          { label: "Review 📚", value: total - known, color: "#f43f5e", bg: "#eff6ff" },
         ].map((s) => (
           <div key={s.label} style={{ background: s.bg, borderRadius: 16, padding: "14px 8px" }}>
             <div style={{ fontSize: 24, fontWeight: 800, color: s.color }}>{s.value}</div>
@@ -525,7 +631,7 @@ function UploadPage({ onCardsReady }: { onCardsReady: (cards: Flashcard[], title
       </p>
 
       {/* Mode toggle */}
-      <div style={{ display: "flex", background: "#f3e8ff", borderRadius: 50, padding: 4, marginBottom: 20, gap: 4 }}>
+      <div style={{ display: "flex", background: "#dbeafe", borderRadius: 50, padding: 4, marginBottom: 20, gap: 4 }}>
         {[
           { id: "file" as const, label: "📄 File / Image", icon: null },
           { id: "text" as const, label: "⌨️ Paste Text", icon: null },
@@ -542,9 +648,9 @@ function UploadPage({ onCardsReady }: { onCardsReady: (cards: Flashcard[], title
               fontWeight: 700,
               fontSize: 14,
               transition: "all 0.2s",
-              background: mode === m.id ? "linear-gradient(135deg, var(--pink-dark), var(--purple))" : "transparent",
+              background: mode === m.id ? "linear-gradient(135deg, var(--accent-dark), var(--purple))" : "transparent",
               color: mode === m.id ? "white" : "var(--text-muted)",
-              boxShadow: mode === m.id ? "0 2px 12px rgba(233,30,140,0.3)" : "none",
+              boxShadow: mode === m.id ? "0 2px 12px rgba(37,99,235,0.3)" : "none",
             }}
           >
             {m.label}
@@ -575,7 +681,7 @@ function UploadPage({ onCardsReady }: { onCardsReady: (cards: Flashcard[], title
             </div>
             {preview ? (
               <div>
-                <p style={{ fontWeight: 700, fontSize: 16, margin: "0 0 4px", color: "var(--pink-dark)" }}>
+                <p style={{ fontWeight: 700, fontSize: 16, margin: "0 0 4px", color: "var(--accent-dark)" }}>
                   {preview.name}
                 </p>
                 <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0 }}>
@@ -635,7 +741,7 @@ function UploadPage({ onCardsReady }: { onCardsReady: (cards: Flashcard[], title
               minHeight: 200,
               padding: "16px",
               borderRadius: 16,
-              border: "2px solid #f3e8ff",
+              border: "2px solid #dbeafe",
               fontSize: 14,
               lineHeight: 1.6,
               resize: "vertical",
@@ -645,8 +751,8 @@ function UploadPage({ onCardsReady }: { onCardsReady: (cards: Flashcard[], title
               background: "white",
               transition: "border-color 0.2s",
             }}
-            onFocus={(e) => (e.target.style.borderColor = "var(--pink-dark)")}
-            onBlur={(e) => (e.target.style.borderColor = "#f3e8ff")}
+            onFocus={(e) => (e.target.style.borderColor = "var(--accent-dark)")}
+            onBlur={(e) => (e.target.style.borderColor = "#dbeafe")}
           />
           <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "6px 0 0", textAlign: "right" }}>
             {textInput.length} characters
@@ -656,12 +762,12 @@ function UploadPage({ onCardsReady }: { onCardsReady: (cards: Flashcard[], title
 
       {error && (
         <div style={{
-          background: "#fce7f3",
-          border: "1px solid #fbcfe8",
+          background: "#dbeafe",
+          border: "1px solid #bfdbfe",
           borderRadius: 12,
           padding: "12px 16px",
           marginBottom: 16,
-          color: "#9d174d",
+          color: "#9f1239",
           fontSize: 14,
           display: "flex",
           alignItems: "flex-start",
@@ -696,6 +802,373 @@ function UploadPage({ onCardsReady }: { onCardsReady: (cards: Flashcard[], title
           🤖 AI is reading your material... This may take a moment!
         </p>
       )}
+
+      {!loading && (
+        <button
+          className="btn btn-ghost"
+          style={{ width: "100%", marginTop: 14, fontSize: 13 }}
+          onClick={() => onCardsReady(SAMPLE_CARDS, "Sample Deck", "10 mixed questions to try both modes", "text")}
+        >
+          <Icons.Play />
+          Or try a sample deck — no upload needed
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ─── Sample deck (no upload / AI needed) ─────────────────────────────────────
+const SAMPLE_CARDS: Flashcard[] = [
+  { question: "What is the capital of Japan?", answer: "Tokyo", hint: "It hosted the 2020 Summer Olympics", difficulty: "easy" },
+  { question: "Which planet is known as the Red Planet?", answer: "Mars", hint: "Named after the Roman god of war", difficulty: "easy" },
+  { question: "What is the powerhouse of the cell?", answer: "Mitochondria", hint: "It makes ATP", difficulty: "easy" },
+  { question: "Who wrote 'Romeo and Juliet'?", answer: "William Shakespeare", hint: "An English playwright", difficulty: "medium" },
+  { question: "What is the chemical symbol for gold?", answer: "Au", hint: "From the Latin 'aurum'", difficulty: "medium" },
+  { question: "In what year did World War II end?", answer: "1945", hint: "Mid-1940s", difficulty: "medium" },
+  { question: "What is the largest ocean on Earth?", answer: "The Pacific Ocean", hint: "Bigger than all land combined", difficulty: "easy" },
+  { question: "What is the square root of 144?", answer: "12", hint: "It is a two-digit number", difficulty: "easy" },
+  { question: "Which organ in the human body produces insulin?", answer: "The pancreas", hint: "It also helps with digestion", difficulty: "medium" },
+  { question: "What gas do plants absorb from the atmosphere during photosynthesis?", answer: "Carbon dioxide", hint: "It is a greenhouse gas", difficulty: "medium" },
+];
+
+// ─── Mode Select ─────────────────────────────────────────────────────────────
+function ModeSelect({
+  cardCount,
+  onSelect,
+}: {
+  cardCount: number;
+  onSelect: (mode: "study" | "exam") => void;
+}) {
+  return (
+    <div className="animate-fade-in" style={{ padding: "4px 0" }}>
+      <div style={{ textAlign: "center", marginBottom: 20 }}>
+        <div className="animate-float" style={{ fontSize: 44, marginBottom: 6 }}>🎯</div>
+        <h2 style={{ margin: "0 0 6px", fontSize: 21, fontWeight: 800 }}>How do you want to study?</h2>
+        <p style={{ margin: 0, fontSize: 14, color: "var(--text-muted)" }}>
+          {cardCount} card{cardCount === 1 ? "" : "s"} ready · pick a mode to begin
+        </p>
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        {/* Study mode */}
+        <button className="mode-card" onClick={() => onSelect("study")}>
+          <div className="mode-icon" style={{ background: "linear-gradient(135deg, #3b82f6, #6366f1)" }}>
+            <Icons.Book />
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <p style={{ margin: "0 0 4px", fontSize: 16, fontWeight: 800 }}>Study Mode</p>
+            <p style={{ margin: "0 0 8px", fontSize: 13, color: "var(--text-muted)", lineHeight: 1.5 }}>
+              Traditional flashcards — see the question, then flip the card to reveal the answer.
+            </p>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {["Flip to reveal", "Self-check", "Track progress"].map((t) => (
+                <span key={t} className="badge" style={{ background: "#eff6ff", color: "#1d4ed8" }}>{t}</span>
+              ))}
+            </div>
+          </div>
+        </button>
+
+        {/* Exam mode */}
+        <button className="mode-card" onClick={() => onSelect("exam")}>
+          <div className="mode-icon" style={{ background: "linear-gradient(135deg, #1d4ed8, #7c3aed)" }}>
+            <Icons.Exam />
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <p style={{ margin: "0 0 4px", fontSize: 16, fontWeight: 800 }}>Exam Mode</p>
+            <p style={{ margin: "0 0 8px", fontSize: 13, color: "var(--text-muted)", lineHeight: 1.5 }}>
+              Multiple choice — 4 options per question, instant Correct / Wrong feedback and a score.
+            </p>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {["4 choices", "Instant feedback", "Scored"].map((t) => (
+                <span key={t} className="badge" style={{ background: "#eef2ff", color: "#6d28d9" }}>{t}</span>
+              ))}
+            </div>
+          </div>
+        </button>
+      </div>
+
+      <p style={{ textAlign: "center", fontSize: 12, color: "var(--text-muted)", marginTop: 18 }}>
+        Tip: warm up in <strong>Study Mode</strong>, then test yourself in <strong>Exam Mode</strong> 💙
+      </p>
+    </div>
+  );
+}
+
+// ─── Exam Mode: multiple choice question card ────────────────────────────────
+function ExamCard({
+  question,
+  index,
+  total,
+  chosen,
+  earnedPoints,
+  onChoose,
+  onNext,
+  isLast,
+}: {
+  question: ExamQuestion;
+  index: number;
+  total: number;
+  chosen: number | null;
+  earnedPoints: number;
+  onChoose: (optionIndex: number) => void;
+  onNext: () => void;
+  isLast: boolean;
+}) {
+  const { card, options, correctIndex } = question;
+  const answered = chosen !== null;
+  const isCorrect = chosen === correctIndex;
+
+  const difficultyColor = {
+    easy: "#10b981",
+    medium: "#f59e0b",
+    hard: "#f43f5e",
+  }[card.difficulty] || "#6366f1";
+
+  // Keyboard: 1-4 to answer, Enter / Space to continue
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!answered) {
+        const n = Number(e.key);
+        if (n >= 1 && n <= options.length) onChoose(n - 1);
+      } else if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        onNext();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [answered, options.length, onChoose, onNext]);
+
+  return (
+    <div className="animate-fade-in" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      {/* Progress */}
+      <div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6, fontSize: 13, color: "var(--text-muted)", fontWeight: 600 }}>
+          <span>Question {index + 1} of {total}</span>
+          <span className="badge" style={{ background: `${difficultyColor}20`, color: difficultyColor }}>
+            {card.difficulty}
+          </span>
+        </div>
+        <div className="progress-bar">
+          <div className="progress-fill" style={{ width: `${((index + 1) / total) * 100}%` }} />
+        </div>
+      </div>
+
+      {/* Question */}
+      <div
+        className="glass-card"
+        style={{
+          padding: 22,
+          borderLeft: "5px solid var(--accent-dark)",
+          display: "flex",
+          flexDirection: "column",
+          justifyContent: "center",
+          minHeight: 130,
+        }}
+      >
+        <p style={{ margin: "0 0 8px", fontSize: 12, fontWeight: 700, letterSpacing: 0.4, color: "var(--accent-dark)", textTransform: "uppercase" }}>
+          Choose the best answer
+        </p>
+        <p style={{ margin: 0, fontSize: 18, fontWeight: 700, lineHeight: 1.45 }}>
+          {card.question}
+        </p>
+      </div>
+
+      {/* Choices */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {options.map((opt, i) => {
+          let cls = "choice";
+          let mark: ReactNode = null;
+          if (answered) {
+            if (i === correctIndex) {
+              cls += " reveal-correct";
+              mark = <span style={{ marginLeft: "auto", fontSize: 18 }}>✅</span>;
+            } else if (i === chosen) {
+              cls += " selected-wrong";
+              mark = <span style={{ marginLeft: "auto", fontSize: 18 }}>❌</span>;
+            } else {
+              cls += " dimmed";
+            }
+          }
+          return (
+            <button
+              key={`${index}-${i}`}
+              className={cls}
+              disabled={answered}
+              onClick={() => onChoose(i)}
+            >
+              <span className="choice-letter">{String.fromCharCode(65 + i)}</span>
+              <span className="choice-text">{opt}</span>
+              {mark}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Feedback */}
+      {answered && (
+        <>
+          <div className={`feedback ${isCorrect ? "feedback-correct" : "feedback-wrong"}`}>
+            <span style={{ fontSize: 20, lineHeight: 1 }}>{isCorrect ? "🎉" : "😅"}</span>
+            <span>
+              <strong>{isCorrect ? "Correct!" : "Wrong!"}</strong>
+              {isCorrect
+                ? earnedPoints > 0
+                  ? ` +${earnedPoints} point${earnedPoints === 1 ? "" : "s"}`
+                  : ""
+                : ` The correct answer is: ${card.answer}`}
+            </span>
+          </div>
+
+          <button className="btn btn-primary btn-lg" style={{ width: "100%" }} onClick={onNext}>
+            {isLast ? "See Results 🏁" : "Next Question"}
+            {!isLast && <Icons.ArrowRight />}
+          </button>
+        </>
+      )}
+
+      {!answered && (
+        <p style={{ textAlign: "center", fontSize: 12, color: "var(--text-muted)", margin: "2px 0 0" }}>
+          Tip: press <strong>1–4</strong> to answer quickly ⌨️
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ─── Exam Mode: results screen ───────────────────────────────────────────────
+function ExamSummary({
+  answers,
+  score,
+  maxScore,
+  bestStreak,
+  elapsed,
+  onRetry,
+  onStudyMissed,
+  onBackToModes,
+}: {
+  answers: ExamAnswer[];
+  score: number;
+  maxScore: number;
+  bestStreak: number;
+  elapsed: number;
+  onRetry: () => void;
+  onStudyMissed: () => void;
+  onBackToModes: () => void;
+}) {
+  const total = answers.length;
+  const correct = answers.filter((a) => a.isCorrect).length;
+  const wrong = total - correct;
+  const pct = total ? Math.round((correct / total) * 100) : 0;
+  const { grade, message, emoji, color } = gradeFor(pct);
+  const missed = answers.filter((a) => !a.isCorrect);
+
+  useEffect(() => {
+    if (pct >= 80) launchConfetti();
+  }, [pct]);
+
+  return (
+    <div className="animate-fade-in" style={{ textAlign: "center", padding: "10px 0" }}>
+      <div style={{ fontSize: 72 }}>{emoji}</div>
+      <h2 className="gradient-text" style={{ fontSize: 27, fontWeight: 800, margin: "6px 0 4px" }}>
+        Exam Complete!
+      </h2>
+      <p style={{ color: "var(--text-muted)", margin: "0 0 22px", fontSize: 15 }}>{message}</p>
+
+      {/* Score ring */}
+      <div
+        className="score-ring"
+        style={{ background: `linear-gradient(135deg, ${color}, #1d4ed8)` }}
+      >
+        <span style={{ fontSize: 40, fontWeight: 900, lineHeight: 1 }}>{pct}%</span>
+        <span style={{ fontSize: 12, opacity: 0.9, fontWeight: 600 }}>accuracy</span>
+      </div>
+
+      {/* Grade + score */}
+      <div style={{ display: "flex", justifyContent: "center", gap: 10, marginBottom: 20, flexWrap: "wrap" }}>
+        <span className="badge" style={{ background: `${color}1a`, color, fontSize: 14, padding: "6px 14px" }}>
+          Grade: {grade}
+        </span>
+        <span className="badge" style={{ background: "#eef2ff", color: "#4338ca", fontSize: 14, padding: "6px 14px" }}>
+          ⭐ {score} / {maxScore} pts
+        </span>
+      </div>
+
+      {/* Stats */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 12 }}>
+        {[
+          { label: "Correct ✅", value: correct, color: "#10b981", bg: "#ecfdf5" },
+          { label: "Wrong ❌", value: wrong, color: "#f43f5e", bg: "#fff1f2" },
+          { label: "Questions", value: total, color: "#3b82f6", bg: "#eff6ff" },
+        ].map((s) => (
+          <div key={s.label} style={{ background: s.bg, borderRadius: 16, padding: "14px 8px" }}>
+            <div style={{ fontSize: 24, fontWeight: 800, color: s.color }}>{s.value}</div>
+            <div style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 600 }}>{s.label}</div>
+          </div>
+        ))}
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 22 }}>
+        <div style={{ background: "white", borderRadius: 16, padding: "12px 8px", boxShadow: "0 4px 16px rgba(29,78,216,0.08)" }}>
+          <div style={{ fontSize: 18, fontWeight: 800, color: "#ea580c" }}>🔥 {bestStreak}</div>
+          <div style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 600 }}>Best streak</div>
+        </div>
+        <div style={{ background: "white", borderRadius: 16, padding: "12px 8px", boxShadow: "0 4px 16px rgba(29,78,216,0.08)" }}>
+          <div style={{ fontSize: 18, fontWeight: 800, color: "#1d4ed8" }}>⏱ {formatTime(elapsed)}</div>
+          <div style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 600 }}>Time taken</div>
+        </div>
+      </div>
+
+      {/* Missed questions */}
+      {missed.length > 0 && (
+        <div style={{ textAlign: "left", marginBottom: 22 }}>
+          <h3 style={{ fontSize: 15, fontWeight: 800, margin: "0 0 10px" }}>
+            📕 Review missed questions ({missed.length})
+          </h3>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {missed.map((a, i) => (
+              <div
+                key={i}
+                style={{
+                  background: "white",
+                  border: "1.5px solid #fecdd3",
+                  borderRadius: 16,
+                  padding: "12px 14px",
+                }}
+              >
+                <p style={{ margin: "0 0 8px", fontSize: 14, fontWeight: 700, lineHeight: 1.45 }}>
+                  {a.card.question}
+                </p>
+                <p style={{ margin: "0 0 4px", fontSize: 13, display: "flex", gap: 6 }}>
+                  <span>❌</span>
+                  <span style={{ color: "#9f1239" }}>Your answer: {a.chosenOption}</span>
+                </p>
+                <p style={{ margin: 0, fontSize: 13, display: "flex", gap: 6 }}>
+                  <span>✅</span>
+                  <span style={{ color: "#065f46", fontWeight: 600 }}>{a.card.answer}</span>
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Actions */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {missed.length > 0 && (
+          <button className="btn btn-primary btn-lg" style={{ width: "100%" }} onClick={onStudyMissed}>
+            <Icons.Book />
+            Study {missed.length} Missed Card{missed.length === 1 ? "" : "s"}
+          </button>
+        )}
+        <button className="btn btn-secondary" style={{ width: "100%" }} onClick={onRetry}>
+          <Icons.Shuffle />
+          Retake Exam (New Order)
+        </button>
+        <button className="btn btn-ghost" style={{ width: "100%" }} onClick={onBackToModes}>
+          <Icons.ArrowLeft />
+          Back to Modes
+        </button>
+      </div>
     </div>
   );
 }
@@ -716,12 +1189,29 @@ function QuizPage({
   onSave?: (title: string) => Promise<void>;
   onBack: () => void;
 }) {
-  const [activeCards, setActiveCards] = useState(cards);
-  const [currentIndex, setCurrentIndex] = useState(0);
+  const [mode, setMode] = useState<QuizMode>("select");
+
+  // Shared
   const [progress, setProgress] = useState<CardProgress[]>([]);
-  const [done, setDone] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(!!sessionId);
+
+  // Study mode
+  const [activeCards, setActiveCards] = useState(cards);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [done, setDone] = useState(false);
+
+  // Exam mode
+  const [examQuestions, setExamQuestions] = useState<ExamQuestion[]>([]);
+  const [examIndex, setExamIndex] = useState(0);
+  const [answers, setAnswers] = useState<ExamAnswer[]>([]);
+  const [score, setScore] = useState(0);
+  const [maxScore, setMaxScore] = useState(0);
+  const [streak, setStreak] = useState(0);
+  const [bestStreak, setBestStreak] = useState(0);
+  const [examDone, setExamDone] = useState(false);
+  const [startedAt, setStartedAt] = useState(() => Date.now());
+  const [elapsed, setElapsed] = useState(0);
 
   // Load progress from server if we have a sessionId
   useEffect(() => {
@@ -742,11 +1232,11 @@ function QuizPage({
 
   const updateProgress = async (cardId: number | undefined, isKnown: boolean) => {
     if (sessionId && cardId) {
-      await fetch(`/api/sessions/${sessionId}`, {
+      fetch(`/api/sessions/${sessionId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ cardId, isKnown }),
-      });
+      }).catch(() => {});
     }
     if (cardId) {
       setProgress((prev) => {
@@ -759,6 +1249,7 @@ function QuizPage({
     }
   };
 
+  // ── Study mode ────────────────────────────────────────────────────────────
   const handleKnow = async () => {
     await updateProgress(currentCard?.id, true);
     if (currentIndex >= activeCards.length - 1) {
@@ -792,6 +1283,80 @@ function QuizPage({
     setDone(false);
   };
 
+  // ── Exam mode ─────────────────────────────────────────────────────────────
+  const startExam = (questionCards?: Flashcard[]) => {
+    const qs = buildExamQuestions(questionCards ?? cards);
+    setExamQuestions(qs);
+    setExamIndex(0);
+    setAnswers([]);
+    setScore(0);
+    setMaxScore(
+      qs.reduce((sum, q, i) => sum + pointsFor(q.card) + (i === 0 ? 0 : Math.min(i * 2, 10)), 0)
+    );
+    setStreak(0);
+    setBestStreak(0);
+    setExamDone(false);
+    setStartedAt(Date.now());
+    setElapsed(0);
+    setMode("exam");
+  };
+
+  const handleChoose = async (optionIndex: number) => {
+    const q = examQuestions[examIndex];
+    if (!q || answers.length > examIndex) return; // ignore clicks after answering
+
+    const isCorrect = optionIndex === q.correctIndex;
+    const newStreak = isCorrect ? streak + 1 : 0;
+    const streakBonus = isCorrect ? Math.min(streak * 2, 10) : 0;
+    const points = isCorrect ? pointsFor(q.card) + streakBonus : 0;
+
+    setAnswers((prev) => [
+      ...prev,
+      {
+        card: q.card,
+        chosenIndex: optionIndex,
+        chosenOption: q.options[optionIndex],
+        correctIndex: q.correctIndex,
+        isCorrect,
+        points,
+      },
+    ]);
+    setScore((s) => s + points);
+    setStreak(newStreak);
+    setBestStreak((b) => Math.max(b, newStreak));
+    await updateProgress(q.card.id, isCorrect);
+  };
+
+  const handleExamNext = () => {
+    if (examIndex >= examQuestions.length - 1) {
+      setElapsed(Math.max(1, Math.round((Date.now() - startedAt) / 1000)));
+      setExamDone(true);
+    } else {
+      setExamIndex((i) => i + 1);
+    }
+  };
+
+  const handleStudyMissed = () => {
+    const missed = answers.filter((a) => !a.isCorrect).map((a) => a.card);
+    if (missed.length === 0) return;
+    setActiveCards(missed);
+    setCurrentIndex(0);
+    setDone(false);
+    setMode("study");
+  };
+
+  // ── Mode switching ────────────────────────────────────────────────────────
+  const switchMode = (m: "study" | "exam") => {
+    if (m === "study") {
+      setActiveCards(cards);
+      setCurrentIndex(0);
+      setDone(false);
+      setMode("study");
+    } else {
+      startExam();
+    }
+  };
+
   const handleSave = async () => {
     if (!onSave || saved) return;
     setSaving(true);
@@ -806,10 +1371,13 @@ function QuizPage({
     }
   };
 
+  const examQuestion = examQuestions[examIndex];
+  const lastAnswer = answers[answers.length - 1];
+
   return (
     <div style={{ padding: "16px" }}>
       {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
         <button className="btn btn-ghost btn-sm" onClick={onBack} style={{ padding: "6px 10px", borderRadius: 12 }}>
           <Icons.ArrowLeft />
         </button>
@@ -838,15 +1406,54 @@ function QuizPage({
         )}
       </div>
 
-      {done ? (
-        <ReviewSummary
-          cards={cards}
-          progress={progress}
-          onRestart={handleRestart}
-          onReviewWeak={handleReviewWeak}
-        />
-      ) : (
-        <FlashCard
+      {/* Mode switch */}
+      {mode !== "select" && (
+        <div style={{ marginBottom: 14 }}>
+          <div className="mode-switch">
+            <button
+              className={mode === "study" ? "active" : ""}
+              onClick={() => switchMode("study")}
+            >
+              <Icons.Book />
+              Study Mode
+            </button>
+            <button
+              className={mode === "exam" ? "active" : ""}
+              onClick={() => switchMode("exam")}
+            >
+              <Icons.Exam />
+              Exam Mode
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Live exam scoreboard */}
+      {mode === "exam" && !examDone && examQuestion && (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
+          <span className="score-pill">
+            <Icons.Star />
+            {score} pts
+          </span>
+          <span className={`score-pill ${streak >= 3 ? "streak-hot" : "streak"}`}>
+            <Icons.Flame />
+            {streak} streak
+          </span>
+          <span className="score-pill" style={{ marginLeft: "auto" }}>
+            <Icons.Target />
+            {answers.length}/{examQuestions.length}
+          </span>
+        </div>
+      )}
+
+      {/* Content */}
+      {mode === "select" && (
+        <ModeSelect cardCount={cards.length} onSelect={switchMode} />
+      )}
+
+      {mode === "study" && !done && (
+        <StudyCard
+          key={currentIndex}
           card={currentCard}
           index={currentIndex}
           total={activeCards.length}
@@ -855,6 +1462,42 @@ function QuizPage({
           onNext={() => setCurrentIndex((i) => Math.min(i + 1, activeCards.length - 1))}
           onPrev={() => setCurrentIndex((i) => Math.max(i - 1, 0))}
           progress={currentProgress}
+        />
+      )}
+
+      {mode === "study" && done && (
+        <ReviewSummary
+          cards={cards}
+          progress={progress}
+          onRestart={handleRestart}
+          onReviewWeak={handleReviewWeak}
+        />
+      )}
+
+      {mode === "exam" && !examDone && examQuestion && (
+        <ExamCard
+          key={`${examIndex}-${examQuestions.length}`}
+          question={examQuestion}
+          index={examIndex}
+          total={examQuestions.length}
+          chosen={answers.length > examIndex ? answers[examIndex].chosenIndex : null}
+          earnedPoints={lastAnswer && lastAnswer.card === examQuestion.card ? lastAnswer.points : 0}
+          onChoose={handleChoose}
+          onNext={handleExamNext}
+          isLast={examIndex === examQuestions.length - 1}
+        />
+      )}
+
+      {mode === "exam" && examDone && (
+        <ExamSummary
+          answers={answers}
+          score={score}
+          maxScore={maxScore}
+          bestStreak={bestStreak}
+          elapsed={elapsed}
+          onRetry={() => startExam()}
+          onStudyMissed={handleStudyMissed}
+          onBackToModes={() => setMode("select")}
         />
       )}
     </div>
@@ -962,7 +1605,7 @@ function SessionsPage({ onOpen }: { onOpen: (id: number) => void }) {
                 width: 52,
                 height: 52,
                 borderRadius: 14,
-                background: "linear-gradient(135deg, #fce4f0, #f0e6ff)",
+                background: "linear-gradient(135deg, #e0f2fe, #eef2ff)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -1005,7 +1648,7 @@ function HomePage({ onUpload, onSessions }: { onUpload: () => void; onSessions: 
       {/* Hero */}
       <div
         style={{
-          background: "linear-gradient(135deg, #e91e8c, #a855f7)",
+          background: "linear-gradient(135deg, #1d4ed8, #7c3aed)",
           borderRadius: 24,
           padding: "28px 24px",
           marginBottom: 24,
@@ -1032,16 +1675,16 @@ function HomePage({ onUpload, onSessions }: { onUpload: () => void; onSessions: 
           background: "rgba(255,255,255,0.08)",
           borderRadius: "50%",
         }} />
-        <div className="animate-heartbeat" style={{ fontSize: 48, marginBottom: 12 }}>💕</div>
+        <div className="animate-heartbeat" style={{ fontSize: 48, marginBottom: 12 }}>💙</div>
         <h1 style={{ margin: "0 0 6px", fontSize: 26, fontWeight: 900, lineHeight: 1.2 }}>
           QuizTime
         </h1>
         <p style={{ margin: "0 0 20px", fontSize: 14, opacity: 0.9, lineHeight: 1.5 }}>
-          Upload your study material and I&apos;ll make it into fun flashcards for you! 🌟
+          Upload your study material and I&apos;ll make it into fun flashcards — then study them or take an exam! 🌟
         </p>
         <button
           className="btn"
-          style={{ background: "white", color: "var(--pink-dark)", fontWeight: 800, fontSize: 15 }}
+          style={{ background: "white", color: "var(--accent-dark)", fontWeight: 800, fontSize: 15 }}
           onClick={onUpload}
         >
           <Icons.Sparkle />
@@ -1055,8 +1698,8 @@ function HomePage({ onUpload, onSessions }: { onUpload: () => void; onSessions: 
         {[
           { icon: "📄", title: "Upload PDF", desc: "Upload any PDF document" },
           { icon: "📸", title: "Take Photo", desc: "Snap a photo of your notes" },
-          { icon: "🤖", title: "AI Magic", desc: "AI reads & extracts key points" },
-          { icon: "🃏", title: "Flashcards", desc: "Review with fun flip cards" },
+          { icon: "📖", title: "Study Mode", desc: "Flip the card to reveal the answer" },
+          { icon: "📝", title: "Exam Mode", desc: "4 choices, instant score" },
         ].map((f, i) => (
           <div
             key={i}
@@ -1072,8 +1715,8 @@ function HomePage({ onUpload, onSessions }: { onUpload: () => void; onSessions: 
 
       {/* Tips */}
       <div style={{
-        background: "linear-gradient(135deg, #fff0f9, #f5f0ff)",
-        border: "1.5px solid #f3e8ff",
+        background: "linear-gradient(135deg, #eff6ff, #ecfeff)",
+        border: "1.5px solid #bfdbfe",
         borderRadius: 18,
         padding: "18px 16px",
         marginBottom: 16,
@@ -1082,7 +1725,7 @@ function HomePage({ onUpload, onSessions }: { onUpload: () => void; onSessions: 
         {[
           "Review cards daily for best retention!",
           "Focus on 'Still Learning' cards more.",
-          "Take breaks every 25 minutes (Pomodoro!)",
+          "Study first, then take Exam Mode to test yourself.",
           "Explain answers in your own words.",
         ].map((tip, i) => (
           <div key={i} style={{ display: "flex", gap: 8, marginBottom: 6, fontSize: 13, color: "var(--text-muted)" }}>
@@ -1129,7 +1772,7 @@ function SetupPage() {
             <li>Sign in with Google</li>
             <li>Click &quot;Get API Key&quot;</li>
             <li>Copy the key</li>
-            <li>Add to your <code style={{ background: "#f3e8ff", padding: "1px 6px", borderRadius: 4 }}>.env</code> file:</li>
+            <li>Add to your <code style={{ background: "#dbeafe", padding: "1px 6px", borderRadius: 4 }}>.env</code> file:</li>
           </ol>
           <div style={{ background: "#1e1b4b", color: "#a5f3fc", borderRadius: 8, padding: "10px 14px", marginTop: 10, fontSize: 12, fontFamily: "monospace" }}>
             GEMINI_API_KEY=your_key_here
@@ -1155,6 +1798,7 @@ export default function App() {
   const [activeSessionTitle, setActiveSessionTitle] = useState("");
   const [activeSessionSummary, setActiveSessionSummary] = useState("");
   const [hasApiKey, setHasApiKey] = useState(true);
+  const [deckKey, setDeckKey] = useState(0);
 
   // Check if API key is configured
   useEffect(() => {
@@ -1174,6 +1818,7 @@ export default function App() {
     setPendingSummary(summary);
     setPendingSourceType(sourceType);
     setActiveSessionId(null);
+    setDeckKey((k) => k + 1);
     setTab("quiz");
   };
 
@@ -1204,6 +1849,7 @@ export default function App() {
       setActiveSessionTitle(data.session.title);
       setActiveSessionSummary("");
       setPendingCards(null);
+      setDeckKey((k) => k + 1);
       setTab("quiz");
     } catch {
       showToast("Failed to load session", "❌");
@@ -1220,6 +1866,7 @@ export default function App() {
 
       return (
         <QuizPage
+          key={deckKey}
           sessionId={activeSessionId ?? undefined}
           cards={cards}
           title={title}
@@ -1256,10 +1903,10 @@ export default function App() {
         position: "sticky",
         top: 0,
         zIndex: 50,
-        background: "rgba(253, 244, 255, 0.92)",
-        backdropFilter: "blur(12px)",
-        WebkitBackdropFilter: "blur(12px)",
-        borderBottom: "1px solid rgba(243, 232, 255, 0.8)",
+        background: "rgba(224, 242, 254, 0.78)",
+        backdropFilter: "blur(14px)",
+        WebkitBackdropFilter: "blur(14px)",
+        borderBottom: "1px solid rgba(147, 197, 253, 0.7)",
         padding: "12px 16px",
         display: "flex",
         alignItems: "center",
