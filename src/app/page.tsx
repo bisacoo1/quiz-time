@@ -802,9 +802,34 @@ function UploadPage({ onCardsReady }: { onCardsReady: (cards: Flashcard[], title
           🤖 AI is reading your material... This may take a moment!
         </p>
       )}
+
+      {!loading && (
+        <button
+          className="btn btn-ghost"
+          style={{ width: "100%", marginTop: 14, fontSize: 13 }}
+          onClick={() => onCardsReady(SAMPLE_CARDS, "Sample Deck", "10 mixed questions to try both modes", "text")}
+        >
+          <Icons.Play />
+          Or try a sample deck — no upload needed
+        </button>
+      )}
     </div>
   );
 }
+
+// ─── Sample deck (no upload / AI needed) ─────────────────────────────────────
+const SAMPLE_CARDS: Flashcard[] = [
+  { question: "What is the capital of Japan?", answer: "Tokyo", hint: "It hosted the 2020 Summer Olympics", difficulty: "easy" },
+  { question: "Which planet is known as the Red Planet?", answer: "Mars", hint: "Named after the Roman god of war", difficulty: "easy" },
+  { question: "What is the powerhouse of the cell?", answer: "Mitochondria", hint: "It makes ATP", difficulty: "easy" },
+  { question: "Who wrote 'Romeo and Juliet'?", answer: "William Shakespeare", hint: "An English playwright", difficulty: "medium" },
+  { question: "What is the chemical symbol for gold?", answer: "Au", hint: "From the Latin 'aurum'", difficulty: "medium" },
+  { question: "In what year did World War II end?", answer: "1945", hint: "Mid-1940s", difficulty: "medium" },
+  { question: "What is the largest ocean on Earth?", answer: "The Pacific Ocean", hint: "Bigger than all land combined", difficulty: "easy" },
+  { question: "What is the square root of 144?", answer: "12", hint: "It is a two-digit number", difficulty: "easy" },
+  { question: "Which organ in the human body produces insulin?", answer: "The pancreas", hint: "It also helps with digestion", difficulty: "medium" },
+  { question: "What gas do plants absorb from the atmosphere during photosynthesis?", answer: "Carbon dioxide", hint: "It is a greenhouse gas", difficulty: "medium" },
+];
 
 // ─── Mode Select ─────────────────────────────────────────────────────────────
 function ModeSelect({
