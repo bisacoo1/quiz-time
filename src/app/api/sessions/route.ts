@@ -2,12 +2,17 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { studySessions, flashcards, cardProgress } from "@/db/schema";
 import { desc, eq, and, sql } from "drizzle-orm";
+import { requireUser } from "@/lib/auth-guard";
 
 export async function GET() {
   try {
+    const guard = await requireUser();
+    if (guard instanceof NextResponse) return guard;
+
     // One query instead of one per session: card counts come from the
     // left joins, "known" counts from joining only known progress rows
     // (safe because card_progress has a unique (card_id, session_id) key).
+    // Scoped to the signed-in user's decks.
     const sessions = await db
       .select({
         id: studySessions.id,
@@ -22,6 +27,7 @@ export async function GET() {
         knownCount: sql<number>`count(${cardProgress.id})::int`,
       })
       .from(studySessions)
+      .where(eq(studySessions.userId, guard.user.id))
       .leftJoin(flashcards, eq(flashcards.sessionId, studySessions.id))
       .leftJoin(
         cardProgress,
@@ -48,6 +54,9 @@ const VALID_DIFFICULTIES = ["easy", "medium", "hard"];
 
 export async function POST(request: NextRequest) {
   try {
+    const guard = await requireUser();
+    if (guard instanceof NextResponse) return guard;
+
     const body = await request.json();
     const { title, sourceType, sourceText, summary, cards } = body;
 
@@ -84,6 +93,7 @@ export async function POST(request: NextRequest) {
           typeof summary === "string" && summary.trim()
             ? summary.trim().slice(0, MAX_SUMMARY_CHARS)
             : null,
+        userId: guard.user.id,
       })
       .returning();
 

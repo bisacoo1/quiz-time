@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { extractDocxText, isDocxFile } from "@/lib/docx";
-import { isRateLimited, clientIp } from "@/lib/rate-limit";
+import { isRateLimited } from "@/lib/rate-limit";
+import { requireUser } from "@/lib/auth-guard";
 
 export const maxDuration = 60;
 
@@ -117,8 +118,13 @@ async function generateWithFallback(
 
 export async function POST(request: NextRequest) {
   try {
-    // Protect the billable Gemini endpoint from casual abuse.
-    if (isRateLimited(clientIp(request.headers))) {
+    // Generation spends the owner's Gemini credits, so it's sign-in only.
+    const guard = await requireUser();
+    if (guard instanceof NextResponse) return guard;
+
+    // Protect the billable Gemini endpoint from casual abuse — bucketed
+    // per signed-in user (falls back to IP for edge cases).
+    if (isRateLimited(`user:${guard.user.id}`)) {
       return NextResponse.json(
         { error: "Too many requests. Please wait a few minutes and try again." },
         { status: 429 }
