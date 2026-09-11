@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { extractDocxText, isDocxFile } from "@/lib/docx";
+import { isRateLimited } from "@/lib/rate-limit";
+import { requireUser } from "@/lib/auth-guard";
 
 export const maxDuration = 60;
 
@@ -65,6 +67,7 @@ const MIME_BY_EXTENSION: Record<string, string> = {
 const MAX_UPLOAD_MB = 15;
 const MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024;
 const MAX_FILES = 8;
+const MAX_TEXT_CHARS = 100_000;
 
 /**
  * Phone cameras and some browsers hand us files with an empty or unusual
@@ -115,6 +118,19 @@ async function generateWithFallback(
 
 export async function POST(request: NextRequest) {
   try {
+    // Generation spends the owner's Gemini credits, so it's sign-in only.
+    const guard = await requireUser();
+    if (guard instanceof NextResponse) return guard;
+
+    // Protect the billable Gemini endpoint from casual abuse — bucketed
+    // per signed-in user (falls back to IP for edge cases).
+    if (isRateLimited(`user:${guard.user.id}`)) {
+      return NextResponse.json(
+        { error: "Too many requests. Please wait a few minutes and try again." },
+        { status: 429 }
+      );
+    }
+
     const formData = await request.formData();
     // One or many files can be sent under the "file" field.
     const files = formData
@@ -128,6 +144,19 @@ export async function POST(request: NextRequest) {
     if (files.length > MAX_FILES) {
       return NextResponse.json(
         { error: `Please upload at most ${MAX_FILES} files at a time.` },
+        { status: 400 }
+      );
+    }
+
+    if (
+      textContent &&
+      files.length === 0 &&
+      textContent.trim().length > MAX_TEXT_CHARS
+    ) {
+      return NextResponse.json(
+        {
+          error: `That text is ${(textContent.length / 1000).toFixed(0)}k characters — please keep it under ${MAX_TEXT_CHARS / 1000}k characters.`,
+        },
         { status: 400 }
       );
     }

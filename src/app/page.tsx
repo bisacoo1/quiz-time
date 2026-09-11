@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback, type ReactNode } from "react";
+import { useSession, signIn, signOut } from "next-auth/react";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 interface Flashcard {
@@ -24,6 +25,7 @@ interface StudySession {
   sourceType: string;
   createdAt: string;
   cardCount: number;
+  knownCount?: number;
 }
 
 type Tab = "home" | "upload" | "quiz" | "sessions";
@@ -1402,6 +1404,8 @@ function QuizPage({
   const [activeCards, setActiveCards] = useState(cards);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [done, setDone] = useState(false);
+  const [shuffleStudy, setShuffleStudy] = useState(false);
+  const [unknownOnly, setUnknownOnly] = useState(false);
 
   // Exam mode
   const [examQuestions, setExamQuestions] = useState<ExamQuestion[]>([]);
@@ -1485,6 +1489,39 @@ function QuizPage({
     setDone(false);
   };
 
+  /** Rebuild the study deck, honoring the shuffle + "unknown only" toggles. */
+  const buildStudyDeck = (useShuffle: boolean, useUnknownOnly: boolean) => {
+    let base = cards;
+    if (useUnknownOnly) {
+      const knownIds = new Set(progress.filter((p) => p.isKnown).map((p) => p.cardId));
+      base = base.filter((c) => !(c.id && knownIds.has(c.id)));
+    }
+    return useShuffle ? shuffle(base) : base;
+  };
+
+  const toggleShuffle = () => {
+    const next = !shuffleStudy;
+    setShuffleStudy(next);
+    setActiveCards(buildStudyDeck(next, unknownOnly));
+    setCurrentIndex(0);
+    setDone(false);
+  };
+
+  const toggleUnknownOnly = () => {
+    const next = !unknownOnly;
+    setUnknownOnly(next);
+    setActiveCards(buildStudyDeck(shuffleStudy, next));
+    setCurrentIndex(0);
+    setDone(false);
+  };
+
+  const showAllCards = () => {
+    setUnknownOnly(false);
+    setActiveCards(buildStudyDeck(shuffleStudy, false));
+    setCurrentIndex(0);
+    setDone(false);
+  };
+
   // ── Exam mode ─────────────────────────────────────────────────────────────
   const startExam = (questionCards?: Flashcard[]) => {
     const qs = buildExamQuestions(questionCards ?? cards);
@@ -1550,7 +1587,8 @@ function QuizPage({
   // ── Mode switching ────────────────────────────────────────────────────────
   const switchMode = (m: "study" | "exam") => {
     if (m === "study") {
-      setActiveCards(cards);
+      // Respect the shuffle / unknown-only toggles if they're on.
+      setActiveCards(buildStudyDeck(shuffleStudy, unknownOnly));
       setCurrentIndex(0);
       setDone(false);
       setMode("study");
@@ -1627,6 +1665,27 @@ function QuizPage({
               Exam Mode
             </button>
           </div>
+
+          {/* Study-mode toggles */}
+          {mode === "study" && !done && (
+            <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+              <button
+                className={`btn btn-sm ${shuffleStudy ? "btn-primary" : "btn-secondary"}`}
+                onClick={toggleShuffle}
+                style={{ flex: 1, gap: 6 }}
+              >
+                <Icons.Shuffle />
+                Shuffle {shuffleStudy ? "On" : "Off"}
+              </button>
+              <button
+                className={`btn btn-sm ${unknownOnly ? "btn-primary" : "btn-secondary"}`}
+                onClick={toggleUnknownOnly}
+                style={{ flex: 1, gap: 6 }}
+              >
+                📗 Unknown only {unknownOnly ? "On" : "Off"}
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -1653,7 +1712,7 @@ function QuizPage({
         <ModeSelect cardCount={cards.length} onSelect={switchMode} />
       )}
 
-      {mode === "study" && !done && (
+      {mode === "study" && !done && currentCard && (
         <StudyCard
           key={currentIndex}
           card={currentCard}
@@ -1665,6 +1724,28 @@ function QuizPage({
           onPrev={() => setCurrentIndex((i) => Math.max(i - 1, 0))}
           progress={currentProgress}
         />
+      )}
+
+      {mode === "study" && !done && !currentCard && (
+        <div style={{ textAlign: "center", padding: "40px 20px" }}>
+          <div style={{ fontSize: 56, marginBottom: 12 }}>
+            {unknownOnly ? "🎉" : "📭"}
+          </div>
+          <h3 style={{ fontSize: 18, fontWeight: 800, margin: "0 0 8px" }}>
+            {unknownOnly ? "No unknown cards left!" : "No cards to study"}
+          </h3>
+          <p style={{ color: "var(--text-muted)", fontSize: 14, margin: "0 0 20px" }}>
+            {unknownOnly
+              ? "You've marked every card in this set as known. Great work!"
+              : "This set has no cards."}
+          </p>
+          {unknownOnly && (
+            <button className="btn btn-primary" onClick={showAllCards}>
+              <Icons.Refresh />
+              Show all {cards.length} cards
+            </button>
+          )}
+        </div>
       )}
 
       {mode === "study" && done && (
@@ -1833,8 +1914,23 @@ function SessionsPage({ onOpen }: { onOpen: (id: number) => void }) {
                 <p style={{ margin: "0 0 3px", fontWeight: 700, fontSize: 15, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {session.title}
                 </p>
-                <p style={{ margin: 0, fontSize: 13, color: "var(--text-muted)" }}>
-                  {session.cardCount} cards · {formatDate(session.createdAt)}
+                <p style={{ margin: 0, fontSize: 13, color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                  <span>
+                    {session.cardCount} card{session.cardCount === 1 ? "" : "s"} · {formatDate(session.createdAt)}
+                  </span>
+                  {typeof session.knownCount === "number" && (
+                    <span
+                      className="badge"
+                      style={{
+                        background: session.knownCount >= session.cardCount && session.cardCount > 0 ? "#d1fae5" : "#dbeafe",
+                        color: session.knownCount >= session.cardCount && session.cardCount > 0 ? "#047857" : "#1d4ed8",
+                      }}
+                    >
+                      {session.knownCount >= session.cardCount && session.cardCount > 0
+                        ? "✅ All known"
+                        : `📗 ${session.knownCount}/${session.cardCount} known`}
+                    </span>
+                  )}
                 </p>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
@@ -2001,6 +2097,78 @@ function SetupPage() {
   );
 }
 
+// ─── Sign-in Prompt ─────────────────────────────────────────────────────────
+function SignInPrompt({ feature }: { feature: string }) {
+  return (
+    <div className="animate-fade-in" style={{ padding: "48px 24px", textAlign: "center" }}>
+      <div style={{ fontSize: 56, marginBottom: 12 }}>🔐</div>
+      <h2 style={{ margin: "0 0 8px", fontSize: 20, fontWeight: 800 }}>Sign in to {feature}</h2>
+      <p style={{ margin: "0 auto 24px", color: "var(--text-muted)", fontSize: 14, lineHeight: 1.6, maxWidth: 320 }}>
+        Your study sets are saved to your account — so you can sync them
+        across devices and pick up right where you left off.
+      </p>
+      <button
+        className="btn btn-primary btn-lg"
+        style={{ width: "100%", gap: 10 }}
+        onClick={() => void signIn("google", { callbackUrl: window.location.href })}
+      >
+        {/* Google "G" */}
+        <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden>
+          <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />
+          <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z" />
+          <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z" />
+          <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" />
+        </svg>
+        Continue with Google
+      </button>
+      <p style={{ marginTop: 14, fontSize: 12, color: "var(--text-muted)" }}>
+        Free · no password to remember · your data stays in your account
+      </p>
+    </div>
+  );
+}
+
+// ─── Draft deck persistence ──────────────────────────────────────────────────
+/** A generated study set that the user hasn't saved to the database yet. */
+interface PendingDeck {
+  cards: Flashcard[];
+  title: string;
+  summary: string;
+  sourceType: string;
+}
+
+const DRAFT_KEY = "quiztime:pending-deck";
+
+function loadDraft(): PendingDeck | null {
+  if (typeof window === "undefined") return null; // SSR
+  try {
+    const raw = window.localStorage.getItem(DRAFT_KEY);
+    if (!raw) return null;
+    const d = JSON.parse(raw);
+    if (
+      d &&
+      Array.isArray(d.cards) &&
+      d.cards.length > 0 &&
+      typeof d.title === "string" &&
+      d.title
+    ) {
+      return d as PendingDeck;
+    }
+  } catch {
+    // Corrupted draft — ignore it.
+  }
+  return null;
+}
+
+function persistDraft(draft: PendingDeck | null) {
+  try {
+    if (draft) window.localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+    else window.localStorage.removeItem(DRAFT_KEY);
+  } catch {
+    // Storage full or blocked — non-fatal, the deck just won't survive reloads.
+  }
+}
+
 // ─── Main App ─────────────────────────────────────────────────────────────────
 export default function App() {
   const [tab, setTab] = useState<Tab>("home");
@@ -2015,17 +2183,25 @@ export default function App() {
   const [hasApiKey, setHasApiKey] = useState(true);
   const [deckKey, setDeckKey] = useState(0);
 
-  // Check if API key is configured
+  // Sign-in state (Auth.js). `data` is null while unauthenticated.
+  const { data: session } = useSession();
+  const user = session?.user;
+  const signedIn = Boolean(user?.id);
+
+  // Check if the AI key is configured via the lightweight /api/config
+  // endpoint. (The old probe — an empty POST to /api/scan — always got
+  // rejected as "No file or text provided" before the route ever looked
+  // at the key, which is why the setup screen was unreachable.)
   useEffect(() => {
-    fetch("/api/scan", { method: "POST", body: new FormData() })
+    fetch("/api/config")
       .then((r) => r.json())
-      .then((data) => {
-        if (data.error && data.error.includes("GEMINI_API_KEY")) {
-          setHasApiKey(false);
-        }
-      })
+      .then((data) => setHasApiKey(Boolean(data.hasApiKey)))
       .catch(() => {});
   }, []);
+
+  // ── Draft deck (generated but not saved yet) ──────────────────────────────
+  // Lazy initializer: restored from localStorage on first client render.
+  const [draft, setDraft] = useState<PendingDeck | null>(() => loadDraft());
 
   const handleCardsReady = (cards: Flashcard[], title: string, summary: string, sourceType: string) => {
     setPendingCards(cards);
@@ -2035,6 +2211,28 @@ export default function App() {
     setActiveSessionId(null);
     setDeckKey((k) => k + 1);
     setTab("quiz");
+
+    // Keep the deck safe if the user leaves before tapping Save.
+    const deck: PendingDeck = { cards, title, summary, sourceType };
+    setDraft(deck);
+    persistDraft(deck);
+  };
+
+  const resumeDraft = () => {
+    if (!draft) return;
+    setPendingCards(draft.cards);
+    setPendingTitle(draft.title);
+    setPendingSummary(draft.summary);
+    setPendingSourceType(draft.sourceType);
+    setActiveSessionId(null);
+    setDeckKey((k) => k + 1);
+    setTab("quiz");
+  };
+
+  const discardDraft = () => {
+    setDraft(null);
+    persistDraft(null);
+    showToast("Draft discarded", "🗑️");
   };
 
   const handleSaveSession = async (title: string) => {
@@ -2052,6 +2250,9 @@ export default function App() {
     if (!res.ok) throw new Error(data.error);
     setActiveSessionId(data.session.id);
     setPendingCards(data.cards);
+    // Deck is in the database now — the draft has served its purpose.
+    setDraft(null);
+    persistDraft(null);
   };
 
   const handleOpenSession = async (id: number) => {
@@ -2098,10 +2299,54 @@ export default function App() {
 
     if (tab === "home") return <HomePage onUpload={() => setTab("upload")} onSessions={() => setTab("sessions")} />;
     if (tab === "upload") {
+      if (!signedIn) return <SignInPrompt feature="create study sets" />;
       if (!hasApiKey) return <SetupPage />;
-      return <UploadPage onCardsReady={handleCardsReady} />;
+      return (
+        <>
+          {draft && !pendingCards && (
+            <div
+              className="animate-fade-in"
+              style={{
+                margin: "12px 16px 0",
+                background: "#fffbeb",
+                border: "1.5px solid #fde68a",
+                borderRadius: 16,
+                padding: "12px 14px",
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+              }}
+            >
+              <span style={{ fontSize: 22 }}>💾</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p style={{ margin: 0, fontSize: 13, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  Unsaved study set: {draft.title}
+                </p>
+                <p style={{ margin: 0, fontSize: 12, color: "var(--text-muted)" }}>
+                  {draft.cards.length} cards kept safe — resume or discard
+                </p>
+              </div>
+              <button className="btn btn-primary btn-sm" onClick={resumeDraft} style={{ flexShrink: 0 }}>
+                Resume
+              </button>
+              <button
+                className="btn btn-ghost btn-sm"
+                onClick={discardDraft}
+                style={{ flexShrink: 0, color: "#f43f5e", padding: "6px" }}
+                aria-label="Discard draft"
+              >
+                <Icons.Delete />
+              </button>
+            </div>
+          )}
+          <UploadPage onCardsReady={handleCardsReady} />
+        </>
+      );
     }
-    if (tab === "sessions") return <SessionsPage onOpen={handleOpenSession} />;
+    if (tab === "sessions") {
+      if (!signedIn) return <SignInPrompt feature="see your study sets" />;
+      return <SessionsPage onOpen={handleOpenSession} />;
+    }
     return null;
   };
 
@@ -2135,11 +2380,58 @@ export default function App() {
           </h1>
           <p style={{ margin: 0, fontSize: 11, color: "var(--text-muted)" }}>Your AI Study Partner</p>
         </div>
-        <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
-          {!hasApiKey && (
+        <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
+          {!hasApiKey && signedIn && (
             <span style={{ fontSize: 12, background: "#fef3c7", color: "#92400e", padding: "4px 10px", borderRadius: 999, fontWeight: 600 }}>
               ⚙️ Setup
             </span>
+          )}
+          {user ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 8, maxWidth: 210 }}>
+              {user.image ? (
+                /* eslint-disable-next-line @next/next/no-img-element */
+                <img
+                  src={user.image}
+                  alt=""
+                  style={{ width: 30, height: 30, borderRadius: "50%", objectFit: "cover", flexShrink: 0 }}
+                />
+              ) : (
+                <div style={{
+                  width: 30,
+                  height: 30,
+                  borderRadius: "50%",
+                  background: "linear-gradient(135deg, #3b82f6, #7c3aed)",
+                  color: "white",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: 14,
+                  fontWeight: 800,
+                  flexShrink: 0,
+                }}>
+                  {(user.name ?? "?").charAt(0).toUpperCase()}
+                </div>
+              )}
+              <span style={{ fontSize: 13, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {user.name?.split(" ")[0] ?? "Signed in"}
+              </span>
+              {/* Full reload on sign-out clears all in-memory deck state. */}
+              <button
+                className="btn btn-ghost btn-sm"
+                onClick={() => void signOut({ callbackUrl: "/" })}
+                style={{ padding: "4px 8px", fontSize: 11, flexShrink: 0 }}
+                aria-label="Sign out"
+              >
+                Sign out
+              </button>
+            </div>
+          ) : (
+            <button
+              className="btn btn-primary btn-sm"
+              onClick={() => void signIn("google", { callbackUrl: window.location.href })}
+            >
+              Sign in
+            </button>
           )}
         </div>
       </div>
@@ -2169,3 +2461,4 @@ export default function App() {
     </div>
   );
 }
+
