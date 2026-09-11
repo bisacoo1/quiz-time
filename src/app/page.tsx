@@ -105,6 +105,38 @@ function gradeFor(pct: number) {
   return { grade: "F", message: "Don't give up — study mode can help! 💙", emoji: "📚", color: "#f43f5e" };
 }
 
+/**
+ * Phone photos are often 3–10 MB (and sometimes arrive as HEIC or with an
+ * empty mime type), which hosting platforms and the Gemini API both reject.
+ * Downscale to a normal JPEG before uploading; if anything fails we just
+ * send the original file.
+ */
+async function compressImage(file: File, maxDim = 1600, quality = 0.82): Promise<File> {
+  try {
+    if (!file.type.startsWith("image/") || file.size <= 600 * 1024) return file;
+
+    const bitmap = await createImageBitmap(file);
+    const scale = Math.min(1, maxDim / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(bitmap.width * scale);
+    canvas.height = Math.round(bitmap.height * scale);
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return file;
+    ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    bitmap.close();
+
+    const blob = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob(resolve, "image/jpeg", quality)
+    );
+    if (!blob || blob.size >= file.size) return file;
+
+    return new File([blob], file.name.replace(/\.\w+$/, "") + ".jpg", { type: "image/jpeg" });
+  } catch {
+    return file;
+  }
+}
+
 function formatTime(seconds: number): string {
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
@@ -546,44 +578,135 @@ function ReviewSummary({
 }
 
 // ─── Upload Page ──────────────────────────────────────────────────────────────
+type PickedFile = {
+  id: string;
+  file: File;
+  kind: "PDF" | "Image" | "Word";
+  previewUrl?: string;
+};
+
+const MAX_FILES = 8;
+const MAX_TOTAL_MB = 24;
+
+function formatSize(bytes: number): string {
+  return bytes >= 1024 * 1024
+    ? `${(bytes / 1024 / 1024).toFixed(1)} MB`
+    : `${Math.max(1, Math.round(bytes / 1024))} KB`;
+}
+
+function isPDFFile(file: File): boolean {
+  return file.type === "application/pdf" || /\.pdf$/i.test(file.name || "");
+}
+
+function isWordFile(file: File): boolean {
+  return (
+    file.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+    file.type === "application/msword" ||
+    /\.docx?$/i.test(file.name || "")
+  );
+}
+
+function isImageFile(file: File): boolean {
+  return file.type.startsWith("image/") || /\.(jpe?g|png|webp|heic|heif)$/i.test(file.name || "");
+}
+
 function UploadPage({ onCardsReady }: { onCardsReady: (cards: Flashcard[], title: string, summary: string, sourceType: string) => void }) {
   const [dragOver, setDragOver] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [textInput, setTextInput] = useState("");
   const [mode, setMode] = useState<"file" | "text">("file");
-  const [preview, setPreview] = useState<{ name: string; type: string; size: string } | null>(null);
+  const [picked, setPicked] = useState<PickedFile[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
+  const pickedRef = useRef<PickedFile[]>([]);
 
-  const processFile = useCallback(async (file: File) => {
-    if (!file) return;
-    const isImage = file.type.startsWith("image/");
-    const isPDF = file.type === "application/pdf";
-    if (!isImage && !isPDF) {
-      setError("Please upload a PDF or image file (JPG, PNG, WEBP)");
-      return;
-    }
-    setPreview({
-      name: file.name,
-      type: isPDF ? "PDF" : "Image",
-      size: `${(file.size / 1024).toFixed(1)} KB`,
-    });
+  useEffect(() => {
+    pickedRef.current = picked;
+  }, [picked]);
+
+  // Release thumbnail URLs when the screen goes away
+  useEffect(
+    () => () => {
+      pickedRef.current.forEach((item) => {
+        if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
+      });
+    },
+    []
+  );
+
+  const addFiles = useCallback(
+    (incoming: File[]) => {
+      if (incoming.length === 0) return;
+
+      const accepted: PickedFile[] = [];
+      let rejected = 0;
+
+      for (const file of incoming) {
+        const pdf = isPDFFile(file);
+        const image = isImageFile(file);
+        const word = isWordFile(file);
+        if (!pdf && !image && !word) {
+          rejected++;
+          continue;
+        }
+        if (picked.some((item) => item.file.name === file.name && item.file.size === file.size)) {
+          continue; // already added
+        }
+        accepted.push({
+          id: `${file.name}-${file.size}-${Math.random().toString(36).slice(2, 8)}`,
+          file,
+          kind: pdf ? "PDF" : word ? "Word" : "Image",
+          previewUrl: image ? URL.createObjectURL(file) : undefined,
+        });
+      }
+
+      const room = Math.max(0, MAX_FILES - picked.length);
+      const kept = accepted.slice(0, room);
+
+      if (rejected > 0) {
+        setError("Only PDF, Word (.docx) or image files (JPG, PNG, WEBP) are supported.");
+      } else if (accepted.length > kept.length) {
+        setError(`You can upload up to ${MAX_FILES} files at a time.`);
+      } else {
+        setError("");
+      }
+
+      if (kept.length > 0) {
+        setPicked((prev) => [...prev, ...kept]);
+      }
+    },
+    [picked]
+  );
+
+  const removeFile = (id: string) => {
+    const target = picked.find((item) => item.id === id);
+    if (target?.previewUrl) URL.revokeObjectURL(target.previewUrl);
+    setPicked((prev) => prev.filter((item) => item.id !== id));
     setError("");
-  }, []);
+  };
+
+  const clearFiles = () => {
+    picked.forEach((item) => {
+      if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
+    });
+    setPicked([]);
+    setError("");
+    if (fileRef.current) fileRef.current.value = "";
+  };
 
   const handleDrop = useCallback(
     (e: React.DragEvent) => {
       e.preventDefault();
       setDragOver(false);
-      const file = e.dataTransfer.files[0];
-      if (file) processFile(file);
+      addFiles(Array.from(e.dataTransfer.files || []));
     },
-    [processFile]
+    [addFiles]
   );
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) processFile(file);
+    const files = Array.from(e.target.files || []);
+    if (files.length > 0) addFiles(files);
+    e.target.value = ""; // allow picking the same file again
   };
 
   const handleSubmit = async () => {
@@ -595,10 +718,37 @@ function UploadPage({ onCardsReady }: { onCardsReady: (cards: Flashcard[], title
       let sourceType = "text";
 
       if (mode === "file") {
-        const file = fileRef.current?.files?.[0];
-        if (!file) { setError("Please select a file first"); setLoading(false); return; }
-        formData.append("file", file);
-        sourceType = file.type === "application/pdf" ? "pdf" : "image";
+        if (picked.length === 0) {
+          setError("Please add at least one PDF or photo");
+          setLoading(false);
+          return;
+        }
+
+        const totalBytes = picked.reduce((sum, item) => sum + item.file.size, 0);
+        if (totalBytes > MAX_TOTAL_MB * 1024 * 1024) {
+          setError(`That's ${formatSize(totalBytes)} in total — please keep it under ${MAX_TOTAL_MB} MB by removing a few files.`);
+          setLoading(false);
+          return;
+        }
+
+        for (const item of picked) {
+          const optimized = await compressImage(item.file);
+          formData.append("file", optimized);
+        }
+
+        const pdfs = picked.filter((item) => item.kind === "PDF").length;
+        const words = picked.filter((item) => item.kind === "Word").length;
+        const images = picked.filter((item) => item.kind === "Image").length;
+        sourceType =
+          picked.length === 1
+            ? pdfs === 1
+              ? "pdf"
+              : words === 1
+              ? "docx"
+              : "image"
+            : images === picked.length
+            ? "image"
+            : "mixed";
       } else {
         if (!textInput.trim()) { setError("Please enter some text to study"); setLoading(false); return; }
         formData.append("text", textInput.trim());
@@ -621,24 +771,27 @@ function UploadPage({ onCardsReady }: { onCardsReady: (cards: Flashcard[], title
     }
   };
 
+  const totalBytes = picked.reduce((sum, item) => sum + item.file.size, 0);
+  const photos = picked.filter((item) => item.kind === "Image").length;
+
   return (
     <div className="animate-fade-in" style={{ padding: "20px 16px" }}>
       <h2 style={{ fontSize: 22, fontWeight: 800, margin: "0 0 4px" }}>
         📤 Upload Study Material
       </h2>
       <p style={{ color: "var(--text-muted)", margin: "0 0 20px", fontSize: 14 }}>
-        Upload a PDF, screenshot, or paste text to generate flashcards!
+        Upload PDFs, Word docs or photos — you can select several at once — or paste text!
       </p>
 
       {/* Mode toggle */}
       <div style={{ display: "flex", background: "#dbeafe", borderRadius: 50, padding: 4, marginBottom: 20, gap: 4 }}>
         {[
-          { id: "file" as const, label: "📄 File / Image", icon: null },
+          { id: "file" as const, label: "📄 Files / Photos", icon: null },
           { id: "text" as const, label: "⌨️ Paste Text", icon: null },
         ].map((m) => (
           <button
             key={m.id}
-            onClick={() => { setMode(m.id); setError(""); setPreview(null); }}
+            onClick={() => { setMode(m.id); setError(""); }}
             style={{
               flex: 1,
               padding: "10px 16px",
@@ -648,7 +801,7 @@ function UploadPage({ onCardsReady }: { onCardsReady: (cards: Flashcard[], title
               fontWeight: 700,
               fontSize: 14,
               transition: "all 0.2s",
-              background: mode === m.id ? "linear-gradient(135deg, var(--accent-dark), var(--purple))" : "transparent",
+              background: mode === m.id ? "linear-gradient(135deg, var(--accent-dark), var(--violet))" : "transparent",
               color: mode === m.id ? "white" : "var(--text-muted)",
               boxShadow: mode === m.id ? "0 2px 12px rgba(37,99,235,0.3)" : "none",
             }}
@@ -662,7 +815,7 @@ function UploadPage({ onCardsReady }: { onCardsReady: (cards: Flashcard[], title
         <>
           <div
             className={`upload-zone ${dragOver ? "drag-over" : ""}`}
-            style={{ padding: "40px 20px", textAlign: "center", marginBottom: 16 }}
+            style={{ padding: picked.length ? "26px 20px" : "40px 20px", textAlign: "center", marginBottom: 16 }}
             onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
             onDragLeave={() => setDragOver(false)}
             onDrop={handleDrop}
@@ -671,34 +824,102 @@ function UploadPage({ onCardsReady }: { onCardsReady: (cards: Flashcard[], title
             <input
               ref={fileRef}
               type="file"
-              accept=".pdf,image/*"
+              accept=".pdf,.doc,.docx,image/*"
+              multiple
               style={{ display: "none" }}
               onChange={handleFileChange}
-              capture="environment"
             />
-            <div style={{ fontSize: 56, marginBottom: 12 }}>
-              {preview ? (preview.type === "PDF" ? "📄" : "🖼️") : "📁"}
+            <div style={{ fontSize: 48, marginBottom: 10 }}>
+              {picked.length ? "🖼️" : "📁"}
             </div>
-            {preview ? (
-              <div>
-                <p style={{ fontWeight: 700, fontSize: 16, margin: "0 0 4px", color: "var(--accent-dark)" }}>
-                  {preview.name}
-                </p>
-                <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0 }}>
-                  {preview.type} · {preview.size}
-                </p>
-              </div>
-            ) : (
-              <div>
-                <p style={{ fontWeight: 700, fontSize: 16, margin: "0 0 6px" }}>
-                  Tap to upload or drag & drop
-                </p>
-                <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0 }}>
-                  Supports PDF, JPG, PNG, WEBP
-                </p>
-              </div>
-            )}
+            <p style={{ fontWeight: 700, fontSize: 16, margin: "0 0 6px" }}>
+              {picked.length ? "Add more files" : "Tap to upload or drag & drop"}
+            </p>
+            <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0 }}>
+              {picked.length
+                ? `${picked.length} of ${MAX_FILES} added · ${formatSize(totalBytes)}`
+                : `PDF, Word, JPG, PNG, WEBP · up to ${MAX_FILES} files`}
+            </p>
           </div>
+
+          {/* Selected files */}
+          {picked.length > 0 && (
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                <p style={{ margin: 0, fontSize: 13, fontWeight: 700 }}>
+                  {picked.length} file{picked.length === 1 ? "" : "s"} selected · {formatSize(totalBytes)}
+                </p>
+                <button
+                  className="btn btn-ghost btn-sm"
+                  style={{ padding: "4px 10px", fontSize: 12 }}
+                  onClick={(e) => { e.stopPropagation(); clearFiles(); }}
+                >
+                  Clear all
+                </button>
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
+                {picked.map((item) => (
+                  <div
+                    key={item.id}
+                    style={{
+                      position: "relative",
+                      aspectRatio: "1 / 1",
+                      borderRadius: 14,
+                      overflow: "hidden",
+                      border: "2px solid #dbeafe",
+                      background: "white",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    {item.previewUrl ? (
+                      /* eslint-disable-next-line @next/next/no-img-element */
+                      <img
+                        src={item.previewUrl}
+                        alt={item.file.name}
+                        style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                      />
+                    ) : (
+                      <div style={{ fontSize: 34 }}>{item.kind === "Word" ? "📝" : "📄"}</div>
+                    )}
+                    <button
+                      className="remove-btn"
+                      onClick={(e) => { e.stopPropagation(); removeFile(item.id); }}
+                      aria-label={`Remove ${item.file.name}`}
+                    >
+                      <Icons.Close />
+                    </button>
+                    <span
+                      style={{
+                        position: "absolute",
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        padding: "12px 6px 5px",
+                        background: "linear-gradient(transparent, rgba(15,35,63,0.85))",
+                        color: "white",
+                        fontSize: 10,
+                        textAlign: "center",
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                      }}
+                    >
+                      {item.file.name}
+                    </span>
+                  </div>
+                ))}
+              </div>
+
+              <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "10px 0 0", textAlign: "center" }}>
+                {picked.length > 1
+                  ? `All ${picked.length} files (${photos} photo${photos === 1 ? "" : "s"}) are combined into one study set 📚`
+                  : "Ready to generate ✨"}
+              </p>
+            </div>
+          )}
 
           {/* Quick options for mobile */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 16 }}>
@@ -719,7 +940,7 @@ function UploadPage({ onCardsReady }: { onCardsReady: (cards: Flashcard[], title
               className="btn btn-secondary"
               onClick={() => {
                 if (fileRef.current) {
-                  fileRef.current.accept = ".pdf,image/*";
+                  fileRef.current.accept = ".pdf,.doc,.docx,image/*";
                   fileRef.current.removeAttribute("capture");
                   fileRef.current.click();
                 }
@@ -761,18 +982,20 @@ function UploadPage({ onCardsReady }: { onCardsReady: (cards: Flashcard[], title
       )}
 
       {error && (
-        <div style={{
-          background: "#dbeafe",
-          border: "1px solid #bfdbfe",
-          borderRadius: 12,
-          padding: "12px 16px",
-          marginBottom: 16,
-          color: "#9f1239",
-          fontSize: 14,
-          display: "flex",
-          alignItems: "flex-start",
-          gap: 8,
-        }}>
+        <div
+          style={{
+            background: "#dbeafe",
+            border: "1px solid #bfdbfe",
+            borderRadius: 12,
+            padding: "12px 16px",
+            marginBottom: 16,
+            color: "#9f1239",
+            fontSize: 14,
+            display: "flex",
+            alignItems: "flex-start",
+            gap: 8,
+          }}
+        >
           <span>⚠️</span>
           <span>{error}</span>
         </div>
@@ -787,12 +1010,16 @@ function UploadPage({ onCardsReady }: { onCardsReady: (cards: Flashcard[], title
         {loading ? (
           <>
             <div className="spinner" style={{ width: 22, height: 22, borderWidth: 2.5, borderColor: "rgba(255,255,255,0.4)", borderTopColor: "white" }} />
-            Generating Flashcards...
+            {mode === "file" && picked.length > 1
+              ? `Reading ${picked.length} files...`
+              : "Generating Flashcards..."}
           </>
         ) : (
           <>
             <Icons.Sparkle />
-            Generate Flashcards with AI ✨
+            {mode === "file" && picked.length > 1
+              ? `Generate from ${picked.length} files ✨`
+              : "Generate Flashcards with AI ✨"}
           </>
         )}
       </button>
@@ -802,34 +1029,9 @@ function UploadPage({ onCardsReady }: { onCardsReady: (cards: Flashcard[], title
           🤖 AI is reading your material... This may take a moment!
         </p>
       )}
-
-      {!loading && (
-        <button
-          className="btn btn-ghost"
-          style={{ width: "100%", marginTop: 14, fontSize: 13 }}
-          onClick={() => onCardsReady(SAMPLE_CARDS, "Sample Deck", "10 mixed questions to try both modes", "text")}
-        >
-          <Icons.Play />
-          Or try a sample deck — no upload needed
-        </button>
-      )}
     </div>
   );
 }
-
-// ─── Sample deck (no upload / AI needed) ─────────────────────────────────────
-const SAMPLE_CARDS: Flashcard[] = [
-  { question: "What is the capital of Japan?", answer: "Tokyo", hint: "It hosted the 2020 Summer Olympics", difficulty: "easy" },
-  { question: "Which planet is known as the Red Planet?", answer: "Mars", hint: "Named after the Roman god of war", difficulty: "easy" },
-  { question: "What is the powerhouse of the cell?", answer: "Mitochondria", hint: "It makes ATP", difficulty: "easy" },
-  { question: "Who wrote 'Romeo and Juliet'?", answer: "William Shakespeare", hint: "An English playwright", difficulty: "medium" },
-  { question: "What is the chemical symbol for gold?", answer: "Au", hint: "From the Latin 'aurum'", difficulty: "medium" },
-  { question: "In what year did World War II end?", answer: "1945", hint: "Mid-1940s", difficulty: "medium" },
-  { question: "What is the largest ocean on Earth?", answer: "The Pacific Ocean", hint: "Bigger than all land combined", difficulty: "easy" },
-  { question: "What is the square root of 144?", answer: "12", hint: "It is a two-digit number", difficulty: "easy" },
-  { question: "Which organ in the human body produces insulin?", answer: "The pancreas", hint: "It also helps with digestion", difficulty: "medium" },
-  { question: "What gas do plants absorb from the atmosphere during photosynthesis?", answer: "Carbon dioxide", hint: "It is a greenhouse gas", difficulty: "medium" },
-];
 
 // ─── Mode Select ─────────────────────────────────────────────────────────────
 function ModeSelect({
@@ -1510,20 +1712,31 @@ function SessionsPage({ onOpen }: { onOpen: (id: number) => void }) {
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState<number | null>(null);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
     try {
-      const res = await fetch("/api/sessions");
+      const res = await fetch("/api/sessions", signal ? { signal } : undefined);
       const data = await res.json();
+      if (signal?.aborted) return;
       setSessions(data.sessions || []);
     } catch {
+      if (signal?.aborted) return;
       showToast("Failed to load sessions", "❌");
     } finally {
-      setLoading(false);
+      if (!signal?.aborted) setLoading(false);
     }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  // Load on mount. The request is kicked off from an async IIFE so the effect
+  // body never calls setState synchronously, and the fetch is aborted if the
+  // screen unmounts before it settles.
+  useEffect(() => {
+    const controller = new AbortController();
+    void (async () => {
+      await load(controller.signal);
+    })();
+    return () => controller.abort();
+  }, [load]);
 
   const handleDelete = async (id: number, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -1554,6 +1767,8 @@ function SessionsPage({ onOpen }: { onOpen: (id: number) => void }) {
   const typeIcon = (type: string) => {
     if (type === "pdf") return "📄";
     if (type === "image") return "🖼️";
+    if (type === "docx") return "📝";
+    if (type === "mixed") return "🗂️";
     return "⌨️";
   };
 
@@ -1561,7 +1776,7 @@ function SessionsPage({ onOpen }: { onOpen: (id: number) => void }) {
     <div style={{ padding: "20px 16px" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
         <h2 style={{ fontSize: 22, fontWeight: 800, margin: 0 }}>📚 My Study Sets</h2>
-        <button className="btn btn-ghost btn-sm" onClick={load} style={{ padding: "6px 10px" }}>
+        <button className="btn btn-ghost btn-sm" onClick={() => load()} style={{ padding: "6px 10px" }}>
           <Icons.Refresh />
         </button>
       </div>
@@ -1918,7 +2133,7 @@ export default function App() {
           <h1 style={{ margin: 0, fontSize: 17, fontWeight: 900 }} className="gradient-text">
             QuizTime
           </h1>
-          <p style={{ margin: 0, fontSize: 11, color: "var(--text-muted)" }}>Your AI Study Partner - Developed by: John Lloyd Ambrad</p>
+          <p style={{ margin: 0, fontSize: 11, color: "var(--text-muted)" }}>Your AI Study Partner</p>
         </div>
         <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
           {!hasApiKey && (

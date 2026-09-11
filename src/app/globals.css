@@ -535,3 +535,24 @@ body {
   box-shadow: 0 10px 36px rgba(29, 78, 216, 0.32);
   animation: pop 0.5s ease both;
 }
+
+/* Thumbnail remove button (multi-file upload) */
+.remove-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: rgba(15, 35, 63, 0.75);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.15s ease;
+}
+.remove-btn:hover { background: rgba(15, 35, 63, 0.95); transform: scale(1.08); }
+.remove-btn svg { width: 14px; height: 14px; }

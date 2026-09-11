@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { extractDocxText, isDocxFile } from "@/lib/docx";
 
 export const maxDuration = 60;
 
@@ -35,14 +36,100 @@ IMPORTANT: Respond ONLY with valid JSON in this exact format:
   ]
 }`;
 
+
+type GeminiPart = string | { inlineData: { mimeType: string; data: string } };
+
+/**
+ * Main model used for every generation request. Set GEMINI_MODEL in the
+ * environment to override it without touching this file.
+ */
+const PRIMARY_MODEL = "gemini-3.6-flash";
+
+/**
+ * Gemini model names change over time (and GEMINI_MODEL may point at one that
+ * isn't enabled for a given key), so try the main model first and fall back to
+ * known-good ones when the API says it's unavailable.
+ */
+const FALLBACK_MODELS = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"];
+
+const SUPPORTED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"];
+const MIME_BY_EXTENSION: Record<string, string> = {
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  png: "image/png",
+  webp: "image/webp",
+  heic: "image/heic",
+  heif: "image/heif",
+  pdf: "application/pdf",
+};
+const MAX_UPLOAD_MB = 15;
+const MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024;
+const MAX_FILES = 8;
+
+/**
+ * Phone cameras and some browsers hand us files with an empty or unusual
+ * `type` (e.g. "" or "image/jpg"), which the Gemini API rejects with a
+ * validation error. Fall back to the file extension, then to JPEG, so we
+ * always send a well-formed mime type.
+ */
+function resolveMimeType(file: File): string | null {
+  const declared = (file.type || "").toLowerCase().trim();
+  if (declared === "application/pdf") return declared;
+  if (declared === "image/jpg") return "image/jpeg";
+  if (SUPPORTED_IMAGE_TYPES.includes(declared)) return declared;
+
+  const ext = (file.name || "").split(".").pop()?.toLowerCase() ?? "";
+  if (MIME_BY_EXTENSION[ext]) return MIME_BY_EXTENSION[ext];
+
+  // Unknown or empty type: treat it as a camera photo (the common case).
+  if (!declared || declared.startsWith("image/")) return "image/jpeg";
+  return null;
+}
+
+function modelCandidates(): string[] {
+  const configured = process.env.GEMINI_MODEL?.trim();
+  return [...new Set([configured || PRIMARY_MODEL, ...FALLBACK_MODELS])];
+}
+
+function isModelUnavailable(err: unknown): boolean {
+  const msg = String((err as Error)?.message ?? err);
+  return /404|not found|not supported|not a valid|unsupported|deprecated|no longer available/i.test(msg);
+}
+
+async function generateWithFallback(
+  genAI: ReturnType<typeof getGeminiClient>,
+  parts: GeminiPart[]
+) {
+  let lastError: unknown;
+  for (const name of modelCandidates()) {
+    try {
+      return await genAI.getGenerativeModel({ model: name }).generateContent(parts);
+    } catch (err) {
+      if (!isModelUnavailable(err)) throw err;
+      lastError = err;
+      console.warn(`Gemini model "${name}" unavailable — trying the next option.`);
+    }
+  }
+  throw lastError;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
-    const file = formData.get("file") as File | null;
+    // One or many files can be sent under the "file" field.
+    const files = formData
+      .getAll("file")
+      .filter((value): value is File => typeof value !== "string");
     const textContent = formData.get("text") as string | null;
 
-    if (!file && !textContent) {
+    if (files.length === 0 && !textContent) {
       return NextResponse.json({ error: "No file or text provided" }, { status: 400 });
+    }
+    if (files.length > MAX_FILES) {
+      return NextResponse.json(
+        { error: `Please upload at most ${MAX_FILES} files at a time.` },
+        { status: 400 }
+      );
     }
 
     let genAI: ReturnType<typeof getGeminiClient>;
@@ -55,44 +142,72 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const model = genAI.getGenerativeModel({ model: "gemini-3.6-flash" });
+    let parts: GeminiPart[];
 
-    let result;
-
-    if (file) {
-      const fileType = file.type;
-      const arrayBuffer = await file.arrayBuffer();
-      const base64 = Buffer.from(arrayBuffer).toString("base64");
-
-      if (fileType === "application/pdf") {
-        // For PDF, use the document API
-        result = await model.generateContent([
-          {
-            inlineData: {
-              mimeType: "application/pdf",
-              data: base64,
-            },
-          },
-          SYSTEM_PROMPT,
-        ]);
-      } else if (fileType.startsWith("image/")) {
-        result = await model.generateContent([
-          {
-            inlineData: {
-              mimeType: fileType as "image/jpeg" | "image/png" | "image/webp" | "image/heic" | "image/heif",
-              data: base64,
-            },
-          },
-          SYSTEM_PROMPT,
-        ]);
-      } else {
-        return NextResponse.json({ error: "Unsupported file type. Please upload a PDF or image." }, { status: 400 });
+    if (files.length > 0) {
+      const totalBytes = files.reduce((sum, f) => sum + f.size, 0);
+      if (totalBytes > MAX_UPLOAD_BYTES * files.length) {
+        return NextResponse.json(
+          { error: `Those files total ${(totalBytes / 1024 / 1024).toFixed(1)} MB. Please keep it under ${MAX_UPLOAD_MB * files.length} MB — remove a few or use screenshots.` },
+          { status: 413 }
+        );
       }
+
+      parts = [];
+      for (const file of files) {
+        if (file.size === 0) {
+          return NextResponse.json(
+            { error: `"${file.name || "One of the files"}" came back empty — please add it again.` },
+            { status: 400 }
+          );
+        }
+        if (file.size > MAX_UPLOAD_BYTES) {
+          return NextResponse.json(
+            { error: `"${file.name || "One of the files"}" is ${(file.size / 1024 / 1024).toFixed(1)} MB. Please use files under ${MAX_UPLOAD_MB} MB — a screenshot usually works great.` },
+            { status: 413 }
+          );
+        }
+
+        // Word documents: Gemini can't take .docx inline, so send the text.
+        if (isDocxFile(file)) {
+          try {
+            const docText = await extractDocxText(file);
+            parts.push(`--- Word document: ${file.name || "document"} ---\n${docText}`);
+          } catch (docError) {
+            const reason = docError instanceof Error ? docError.message : "";
+            return NextResponse.json(
+              {
+                error: reason || `Couldn't read "${file.name || "that Word file"}". If it's an old .doc file, re-save it as .docx (or export it to PDF) and try again.`,
+              },
+              { status: 400 }
+            );
+          }
+          continue;
+        }
+
+        const mimeType = resolveMimeType(file);
+        if (!mimeType) {
+          return NextResponse.json(
+            { error: `Unsupported file type "${file.type || "unknown"}" for "${file.name || "a file"}". Upload a JPEG/PNG/WEBP photo, a screenshot, a PDF, or a Word (.docx) file.` },
+            { status: 400 }
+          );
+        }
+
+        const arrayBuffer = await file.arrayBuffer();
+        const base64 = Buffer.from(arrayBuffer).toString("base64");
+        parts.push({ inlineData: { mimeType, data: base64 } });
+      }
+
+      parts.push(
+        files.length > 1
+          ? `You were given ${files.length} study sources (in this order). ${SYSTEM_PROMPT} Make sure the flashcards cover ALL of the sources, not just the first one.`
+          : SYSTEM_PROMPT
+      );
     } else {
-      result = await model.generateContent([
-        `Here is the study text content:\n\n${textContent}\n\n${SYSTEM_PROMPT}`,
-      ]);
+      parts = [`Here is the study text content:\n\n${textContent}\n\n${SYSTEM_PROMPT}`];
     }
+
+    const result = await generateWithFallback(genAI, parts);
 
     const responseText = result.response.text();
 
