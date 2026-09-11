@@ -1,62 +1,107 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
-import { studySessions, flashcards } from "@/db/schema";
-import { desc, eq } from "drizzle-orm";
+import { studySessions, flashcards, cardProgress } from "@/db/schema";
+import { desc, eq, and, sql } from "drizzle-orm";
 
 export async function GET() {
   try {
+    // One query instead of one per session: card counts come from the
+    // left joins, "known" counts from joining only known progress rows
+    // (safe because card_progress has a unique (card_id, session_id) key).
     const sessions = await db
-      .select()
+      .select({
+        id: studySessions.id,
+        title: studySessions.title,
+        sourceType: studySessions.sourceType,
+        sourceText: studySessions.sourceText,
+        summary: studySessions.summary,
+        createdAt: studySessions.createdAt,
+        // ::int — pg returns bigint as strings, which breaks numeric
+        // comparisons client-side ("9" >= "10" is true as strings).
+        cardCount: sql<number>`count(${flashcards.id})::int`,
+        knownCount: sql<number>`count(${cardProgress.id})::int`,
+      })
       .from(studySessions)
+      .leftJoin(flashcards, eq(flashcards.sessionId, studySessions.id))
+      .leftJoin(
+        cardProgress,
+        and(
+          eq(cardProgress.sessionId, studySessions.id),
+          eq(cardProgress.cardId, flashcards.id),
+          eq(cardProgress.isKnown, true)
+        )
+      )
+      .groupBy(studySessions.id)
       .orderBy(desc(studySessions.createdAt));
 
-    // Get card counts for each session
-    const sessionsWithCounts = await Promise.all(
-      sessions.map(async (session) => {
-        const cards = await db
-          .select()
-          .from(flashcards)
-          .where(eq(flashcards.sessionId, session.id));
-        return {
-          ...session,
-          cardCount: cards.length,
-        };
-      })
-    );
-
-    return NextResponse.json({ sessions: sessionsWithCounts });
+    return NextResponse.json({ sessions });
   } catch (error) {
     console.error("GET /api/sessions error:", error);
     return NextResponse.json({ error: "Failed to load sessions" }, { status: 500 });
   }
 }
 
+const MAX_TITLE_CHARS = 120;
+const MAX_SUMMARY_CHARS = 500;
+const MAX_CARDS = 200;
+const VALID_DIFFICULTIES = ["easy", "medium", "hard"];
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { title, sourceType, sourceText, cards } = body;
+    const { title, sourceType, sourceText, summary, cards } = body;
 
-    if (!title || !cards || !Array.isArray(cards) || cards.length === 0) {
-      return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+    if (typeof title !== "string" || !title.trim()) {
+      return NextResponse.json({ error: "A deck title is required" }, { status: 400 });
+    }
+    if (!cards || !Array.isArray(cards) || cards.length === 0) {
+      return NextResponse.json({ error: "At least one card is required" }, { status: 400 });
+    }
+    if (cards.length > MAX_CARDS) {
+      return NextResponse.json(
+        { error: `That's ${cards.length} cards — please keep it under ${MAX_CARDS}.` },
+        { status: 400 }
+      );
+    }
+    for (let i = 0; i < cards.length; i++) {
+      const card = cards[i] as { question?: unknown; answer?: unknown };
+      if (typeof card?.question !== "string" || !card.question.trim() ||
+          typeof card?.answer !== "string" || !card.answer.trim()) {
+        return NextResponse.json(
+          { error: `Card ${i + 1} is missing a question or answer` },
+          { status: 400 }
+        );
+      }
     }
 
     const [session] = await db
       .insert(studySessions)
       .values({
-        title,
-        sourceType: sourceType || "text",
-        sourceText: sourceText || null,
+        title: title.trim().slice(0, MAX_TITLE_CHARS),
+        sourceType: typeof sourceType === "string" && sourceType.trim() ? sourceType.trim() : "text",
+        sourceText: typeof sourceText === "string" ? sourceText : null,
+        summary:
+          typeof summary === "string" && summary.trim()
+            ? summary.trim().slice(0, MAX_SUMMARY_CHARS)
+            : null,
       })
       .returning();
 
-    const cardValues = cards.map((card: { question: string; answer: string; hint?: string; difficulty?: string }, idx: number) => ({
-      sessionId: session.id,
-      question: card.question,
-      answer: card.answer,
-      hint: card.hint || null,
-      difficulty: card.difficulty || "medium",
-      orderIndex: idx,
-    }));
+    const cardValues = cards.map(
+      (card: { question: string; answer: string; hint?: unknown; difficulty?: unknown }, idx: number) => {
+        const difficulty = String(card.difficulty ?? "")
+          .trim()
+          .toLowerCase();
+        return {
+          sessionId: session.id,
+          question: card.question.trim(),
+          answer: card.answer.trim(),
+          hint: typeof card.hint === "string" && card.hint.trim() ? card.hint.trim() : null,
+          difficulty: VALID_DIFFICULTIES.includes(difficulty) ? difficulty : "medium",
+          orderIndex: idx,
+        };
+      }
+    );
 
     const insertedCards = await db
       .insert(flashcards)

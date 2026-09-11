@@ -1,7 +1,7 @@
 {
-  "name": "StudyBuddy \u2013 Flashcard Quiz Maker",
-  "short_name": "StudyBuddy",
-  "description": "Scan PDFs or images and turn them into flashcard quizzes!",
+  "name": "QuizTime – Flashcard Quiz Maker",
+  "short_name": "QuizTime",
+  "description": "Upload PDFs, photos, or Word docs and turn them into flashcard quizzes!",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#e0f2fe",

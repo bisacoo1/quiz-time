@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { studySessions, flashcards, cardProgress } from "@/db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 
 export async function GET(
   _request: NextRequest,
@@ -9,7 +9,7 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    const sessionId = parseInt(id);
+    const sessionId = parseInt(id, 10);
 
     const [session] = await db
       .select()
@@ -44,7 +44,7 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
-    const sessionId = parseInt(id);
+    const sessionId = parseInt(id, 10);
 
     await db.delete(studySessions).where(eq(studySessions.id, sessionId));
 
@@ -61,44 +61,47 @@ export async function PATCH(
 ) {
   try {
     const { id } = await params;
-    const sessionId = parseInt(id);
+    const sessionId = parseInt(id, 10);
     const body = await request.json();
     const { cardId, isKnown } = body;
 
-    // Upsert card progress
-    const existing = await db
-      .select()
-      .from(cardProgress)
-      .where(
-        and(
-          eq(cardProgress.cardId, cardId),
-          eq(cardProgress.sessionId, sessionId)
-        )
+    if (!Number.isInteger(cardId) || typeof isKnown !== "boolean") {
+      return NextResponse.json(
+        { error: "cardId (integer) and isKnown (boolean) are required" },
+        { status: 400 }
       );
+    }
 
-    if (existing.length > 0) {
-      await db
-        .update(cardProgress)
-        .set({
-          isKnown,
-          attempts: existing[0].attempts + 1,
-          lastReviewedAt: new Date(),
-        })
-        .where(
-          and(
-            eq(cardProgress.cardId, cardId),
-            eq(cardProgress.sessionId, sessionId)
-          )
-        );
-    } else {
-      await db.insert(cardProgress).values({
+    // The card must belong to this session — otherwise progress would be
+    // written with a mismatched session id.
+    const [card] = await db
+      .select({ sessionId: flashcards.sessionId })
+      .from(flashcards)
+      .where(eq(flashcards.id, cardId));
+
+    if (!card || card.sessionId !== sessionId) {
+      return NextResponse.json({ error: "Card not found in this session" }, { status: 404 });
+    }
+
+    // Atomic upsert — one row per (card, session), guaranteed by the
+    // card_progress_card_session_key unique index.
+    await db
+      .insert(cardProgress)
+      .values({
         cardId,
         sessionId,
         isKnown,
         attempts: 1,
         lastReviewedAt: new Date(),
+      })
+      .onConflictDoUpdate({
+        target: [cardProgress.cardId, cardProgress.sessionId],
+        set: {
+          isKnown,
+          attempts: sql`${cardProgress.attempts} + 1`,
+          lastReviewedAt: new Date(),
+        },
       });
-    }
 
     return NextResponse.json({ success: true });
   } catch (error) {

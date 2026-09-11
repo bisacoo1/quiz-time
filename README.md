@@ -33,7 +33,8 @@ study set** covering all of them.
 
 ```bash
 npm install
-cp .env .env.local   # then fill in the values (see below)
+cp .env.example .env.local   # then fill in the values (see below)
+npm run db:migrate           # create the database tables (idempotent)
 npm run dev
 ```
 
@@ -50,47 +51,23 @@ npm run dev
 
 ## Database setup
 
-There are no committed migrations yet, so create the tables once against your
-database (SQL console or `psql`):
+Migrations are committed under `drizzle/`. Apply them with:
 
-```sql
-CREATE TABLE "study_sessions" (
-  "id" serial PRIMARY KEY NOT NULL,
-  "title" text NOT NULL,
-  "source_type" text NOT NULL,
-  "source_text" text,
-  "created_at" timestamp DEFAULT now() NOT NULL
-);
-
-CREATE TABLE "flashcards" (
-  "id" serial PRIMARY KEY NOT NULL,
-  "session_id" integer NOT NULL,
-  "question" text NOT NULL,
-  "answer" text NOT NULL,
-  "hint" text,
-  "difficulty" text DEFAULT 'medium' NOT NULL,
-  "order_index" integer DEFAULT 0 NOT NULL,
-  "created_at" timestamp DEFAULT now() NOT NULL
-);
-
-CREATE TABLE "card_progress" (
-  "id" serial PRIMARY KEY NOT NULL,
-  "card_id" integer NOT NULL,
-  "session_id" integer NOT NULL,
-  "is_known" boolean DEFAULT false NOT NULL,
-  "attempts" integer DEFAULT 0 NOT NULL,
-  "last_reviewed_at" timestamp DEFAULT now()
-);
-
-ALTER TABLE "flashcards" ADD CONSTRAINT "flashcards_session_id_study_sessions_id_fk"
-  FOREIGN KEY ("session_id") REFERENCES "public"."study_sessions"("id") ON DELETE cascade;
-ALTER TABLE "card_progress" ADD CONSTRAINT "card_progress_card_id_flashcards_id_fk"
-  FOREIGN KEY ("card_id") REFERENCES "public"."flashcards"("id") ON DELETE cascade;
-ALTER TABLE "card_progress" ADD CONSTRAINT "card_progress_session_id_study_sessions_id_fk"
-  FOREIGN KEY ("session_id") REFERENCES "public"."study_sessions"("id") ON DELETE cascade;
+```bash
+npm run db:migrate
 ```
 
-(Equivalent to `npx drizzle-kit generate` + applying the generated SQL.)
+The initial migration is **idempotent** — safe to re-run, and safe on
+databases that were already created with the old hand-pasted SQL (it adds the
+`summary` column, the `card_progress` unique constraint, and the indexes).
+
+To make schema changes later:
+
+```bash
+# edit src/db/schema.ts, then:
+npm run db:generate   # writes a new SQL file into drizzle/
+npm run db:migrate    # applies it
+```
 
 ## Deploying to Vercel
 
@@ -100,19 +77,33 @@ ALTER TABLE "card_progress" ADD CONSTRAINT "card_progress_session_id_study_sessi
    - `DATABASE_URL` (e.g. Vercel Postgres / Neon connection string)
    - `GEMINI_API_KEY`
    - `GEMINI_MODEL` (optional)
-3. Create the tables from the SQL above in that database.
+3. Create the tables: run `npm run db:migrate` once against that database
+   (locally, with `DATABASE_URL` pointing at it).
 4. Deploy. If the build fails with `DATABASE_URL is required`, the variable
    wasn't set before the build started.
 
 ## Scripts
 
 ```bash
-npm run dev        # dev server
-npm run build      # production build
-npm run start      # serve the production build
-npm run lint       # eslint
-npm run typecheck  # tsc --noEmit
+npm run dev         # dev server
+npm run build       # production build
+npm run start       # serve the production build
+npm run lint        # eslint
+npm run typecheck   # tsc --noEmit
+npm run db:generate # generate a new migration from src/db/schema.ts
+npm run db:migrate  # apply committed migrations to DATABASE_URL
 ```
+
+## Notes
+
+- **AI generation is rate-limited** to 10 requests per 10 minutes per IP on
+  `/api/scan` (soft limit, per server instance) so a stray scraper can't burn
+  your Gemini free tier.
+- `GET /api/config` tells the frontend whether `GEMINI_API_KEY` is set, so the
+  app shows the setup screen instead of a broken upload form.
+- `GET /api/health` also pings the database (returns 503 when the DB is down).
+- Generated-but-unsaved decks are kept in `localStorage`; the Upload tab shows
+  a banner to resume or discard them.
 
 ## Scoring in Exam Mode
 
