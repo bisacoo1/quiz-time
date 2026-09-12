@@ -19,6 +19,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     }),
   ],
   session: { strategy: "jwt" },
+  // The app runs behind proxies (Vercel, preview tunnels, local e2e), where
+  // the Host header doesn't match a configured AUTH_URL. Without this,
+  // Auth.js v5 throws UntrustedHost and every auth() call — and therefore
+  // every signed-in API route — fails with 401/500.
+  trustHost: true,
   callbacks: {
     async jwt({ token, user }) {
       // `user` is only present on the first callback right after sign-in.

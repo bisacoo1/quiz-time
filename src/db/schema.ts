@@ -76,7 +76,33 @@ export const cardProgress = pgTable(
   ]
 );
 
+export const studyResults = pgTable(
+  "study_results",
+  {
+    id: serial("id").primaryKey(),
+    /** Owner of the result — every read/write is scoped to this column. */
+    userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    /** Deck (study_sessions row) the answered card belongs to. */
+    sessionId: integer("session_id").notNull().references(() => studySessions.id, { onDelete: "cascade" }),
+    /** The flashcard that was answered. */
+    cardId: integer("card_id").notNull().references(() => flashcards.id, { onDelete: "cascade" }),
+    /** Right/wrong signal — the foundation P4's spaced repetition consumes. */
+    correct: boolean("correct").notNull(),
+    /** Which mode produced the outcome: 'study' (self-check) or 'exam' (MCQ). */
+    mode: text("mode").notNull().default("study"),
+    answeredAt: timestamp("answered_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("study_results_user_id_idx").on(table.userId),
+    index("study_results_session_id_idx").on(table.sessionId),
+    index("study_results_card_id_idx").on(table.cardId),
+    // Streaks + overall stats are per-user time-range queries.
+    index("study_results_user_answered_idx").on(table.userId, table.answeredAt),
+  ]
+);
+
 export type User = typeof users.$inferSelect;
 export type StudySession = typeof studySessions.$inferSelect;
 export type Flashcard = typeof flashcards.$inferSelect;
 export type CardProgress = typeof cardProgress.$inferSelect;
+export type StudyResult = typeof studyResults.$inferSelect;
