@@ -15,12 +15,18 @@
  *   - valid results are recorded and stats (overall/per-deck/streak) are
  *     computed correctly, including for decks that predate the feature
  *     (zeros, no crash),
- *   - deleting a deck cascades to its study results.
+ *   - deleting a deck cascades to its study results,
+ *   - signing in with an existing email under a *new* Google `sub`
+ *     self-heals: the jwt callback re-keys users.id and the user's decks
+ *     and study results follow via the ON UPDATE cascade FKs. That case
+ *     drives the real jwt callback from src/auth.ts in-process (a real
+ *     Google OAuth round-trip can't happen offline).
  *
- * Usage (server on $BASE_URL or spawned automatically):
- *   node scripts/auth-e2e.mjs                 # spawns `npm run start` (needs a build)
- *   NPM_CMD=dev node scripts/auth-e2e.mjs     # spawns `npm run dev` instead
- *   BASE_URL=http://127.0.0.1:3000 node scripts/auth-e2e.mjs   # use a running server
+ * Usage (server on $BASE_URL or spawned automatically). The suite runs
+ * under tsx because the re-key case imports src/auth.ts directly:
+ *   npm run test:e2e                 # spawns `npm run start` (needs a build)
+ *   NPM_CMD=dev npm run test:e2e     # spawns `npm run dev` instead
+ *   BASE_URL=http://127.0.0.1:3000 npm run test:e2e   # use a running server
  *
  * Requires DATABASE_URL + AUTH_SECRET in the environment (or .env.local,
  * which Next loads for the spawned server).
@@ -58,6 +64,10 @@ assert.ok(DATABASE_URL, "DATABASE_URL must be set (same database the server uses
 const COOKIE = "authjs.session-token"; // http (non-secure) cookie name in Auth.js v5
 const USER_A = "e2e-user-a-111111";
 const USER_B = "e2e-user-b-222222";
+// Account re-keying fixture: same email, old vs new Google `sub`.
+const REKEY_OLD = "e2e-rekey-old-000001";
+const REKEY_NEW = "e2e-rekey-new-900001";
+const REKEY_EMAIL = "e2e-rekey@e2e.local";
 
 /** Mint a session JWT for a user id, the way Auth.js would after Google sign-in. */
 const sessionCookieFor = (userId) =>
@@ -192,7 +202,9 @@ before(async () => {
 });
 
 after(async () => {
-  await pool.query(`DELETE FROM users WHERE id IN ($1, $2)`, [USER_A, USER_B]);
+  await pool.query(`DELETE FROM users WHERE id = ANY($1)`, [
+    [USER_A, USER_B, REKEY_OLD, REKEY_NEW],
+  ]);
   await pool.end();
   if (spawned) spawned.kill("SIGTERM");
 });
@@ -464,5 +476,104 @@ describe("daily streak", () => {
 
     const r = await api("/api/stats", { cookie: tokenA });
     assert.equal(r.data.overall.streak, 1);
+  });
+});
+
+describe("account re-keying (same email, new Google sub)", () => {
+  let rekeyDeck;
+  let rekeyCard;
+
+  before(async () => {
+    // Pre-seed a user under the OLD Google id, with a deck, a card and a
+    // recorded answer — everything must survive the re-key.
+    await pool.query(`DELETE FROM users WHERE id = ANY($1) OR email = $2`, [
+      [REKEY_OLD, REKEY_NEW],
+      REKEY_EMAIL,
+    ]);
+    await pool.query(
+      `INSERT INTO users (id, email, name, provider) VALUES ($1, $2, 'E2E Rekey', 'google')`,
+      [REKEY_OLD, REKEY_EMAIL]
+    );
+    const deck = await pool.query(
+      `INSERT INTO study_sessions (title, source_type, user_id)
+       VALUES ('E2E Rekey Deck', 'text', $1) RETURNING id`,
+      [REKEY_OLD]
+    );
+    rekeyDeck = deck.rows[0].id;
+    const card = await pool.query(
+      `INSERT INTO flashcards (session_id, question, answer, difficulty, order_index)
+       VALUES ($1, 'Rekey question?', 'Rekey answer', 'medium', 0) RETURNING id`,
+      [rekeyDeck]
+    );
+    rekeyCard = card.rows[0].id;
+    await pool.query(
+      `INSERT INTO study_results (user_id, session_id, card_id, correct, mode)
+       VALUES ($1, $2, $3, true, 'study')`,
+      [REKEY_OLD, rekeyDeck, rekeyCard]
+    );
+  });
+
+  test("sign-in with the same email under a new sub self-heals instead of crashing", async () => {
+    // Drive the real jwt callback from src/auth.ts the way Auth.js does
+    // right after a Google sign-in: same email, but a different `sub`.
+    // Before the fix this threw Postgres 23505 (users_email_unique) and
+    // the user landed on the Configuration error page.
+    const { authConfig } = await import("../src/auth.ts");
+    const token = {};
+    await authConfig.callbacks.jwt({
+      token,
+      user: {
+        id: REKEY_NEW,
+        email: REKEY_EMAIL,
+        name: "E2E Rekey",
+        image: null,
+      },
+    });
+
+    // Login succeeded and the token is pinned to the NEW id.
+    assert.equal(token.userId, REKEY_NEW, "login must self-heal and pin the new id");
+
+    // Exactly one user row for the email, now under the new id.
+    const u = await pool.query(`SELECT id, email FROM users WHERE email = $1`, [REKEY_EMAIL]);
+    assert.equal(u.rows.length, 1);
+    assert.equal(u.rows[0].id, REKEY_NEW);
+    const gone = await pool.query(`SELECT count(*)::int AS n FROM users WHERE id = $1`, [REKEY_OLD]);
+    assert.equal(gone.rows[0].n, 0, "old user row must be gone after re-key");
+
+    // The deck (and its cards/results) followed the id via ON UPDATE cascade.
+    const s = await pool.query(`SELECT user_id, title FROM study_sessions WHERE id = $1`, [rekeyDeck]);
+    assert.equal(s.rows.length, 1, "deck must still exist");
+    assert.equal(s.rows[0].user_id, REKEY_NEW, "deck must follow the new user id");
+    const res = await pool.query(
+      `SELECT user_id FROM study_results WHERE session_id = $1 AND card_id = $2`,
+      [rekeyDeck, rekeyCard]
+    );
+    assert.equal(res.rows.length, 1);
+    assert.equal(res.rows[0].user_id, REKEY_NEW, "study results must follow the new user id");
+  });
+
+  test("the deck is usable under the new identity", async () => {
+    const newCookie = await sessionCookieFor(REKEY_NEW);
+    const oldCookie = await sessionCookieFor(REKEY_OLD);
+
+    // Signed in as the new id: the deck shows up and loads.
+    const list = await api("/api/sessions", { cookie: newCookie });
+    assert.equal(list.status, 200);
+    assert.ok(
+      list.data.sessions.some((s) => s.id === rekeyDeck),
+      "re-keyed deck must be listed under the new identity"
+    );
+    const one = await api(`/api/sessions/${rekeyDeck}`, { cookie: newCookie });
+    assert.equal(one.status, 200);
+    assert.equal(one.data.session.title, "E2E Rekey Deck");
+    assert.equal(one.data.cards.length, 1);
+
+    // The old identity no longer owns anything (moved, not copied).
+    const stale = await api("/api/sessions", { cookie: oldCookie });
+    assert.equal(stale.status, 200);
+    assert.ok(
+      !stale.data.sessions.some((s) => s.id === rekeyDeck),
+      "deck must not remain under the old identity"
+    );
   });
 });
