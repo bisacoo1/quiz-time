@@ -316,13 +316,31 @@ body {
   font-size: 14px;
   font-weight: 500;
   z-index: 10000;
-  transition: transform 0.3s ease;
   box-shadow: 0 8px 32px rgba(0,0,0,0.2);
   white-space: nowrap;
   max-width: 90vw;
   text-align: center;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  /* Slide in (~0.3s), hold, slide out — one animation, no JS state toggling. */
+  animation: toast-in-out 3.1s ease forwards;
 }
-.toast.show { transform: translateX(-50%) translateY(0); }
+.toast svg { width: 17px; height: 17px; flex-shrink: 0; }
+
+@keyframes toast-in-out {
+  0% { transform: translateX(-50%) translateY(100px); }
+  10% { transform: translateX(-50%) translateY(0); }
+  85% { transform: translateX(-50%) translateY(0); }
+  100% { transform: translateX(-50%) translateY(100px); }
+}
+
+/* Lucide icon sitting inside running text: keeps it on the baseline. */
+.icon-inline {
+  display: inline-block;
+  vertical-align: -0.18em;
+  flex-shrink: 0;
+}
 
 /* Responsive nav */
 .nav-bottom {

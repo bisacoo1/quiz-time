@@ -1,6 +1,7 @@
 "use client";
 
 import { signIn } from "next-auth/react";
+import { Wrench } from "lucide-react";
 
 /**
  * Full-page maintenance screen shown to signed-out visitors while
@@ -28,8 +29,8 @@ export function MaintenanceScreen() {
           textAlign: "center",
         }}
       >
-        <div style={{ fontSize: 56, lineHeight: 1 }} aria-hidden>
-          🛠️
+        <div style={{ lineHeight: 1, color: "var(--accent-dark)" }} aria-hidden>
+          <Wrench size={56} strokeWidth={1.5} />
         </div>
         <h1
           className="gradient-text"

@@ -2,6 +2,58 @@
 
 import { useState, useEffect, useRef, useCallback, type ReactNode } from "react";
 import { useSession, signIn, signOut } from "next-auth/react";
+import {
+  ArrowLeft,
+  ArrowRight,
+  BookBookmark,
+  BookOpen,
+  BookOpenCheck,
+  Bot,
+  Camera,
+  ChartColumn,
+  Check,
+  CircleCheckBig,
+  CircleQuestionMark,
+  CircleX,
+  ClipboardCheck,
+  ClockArrowUp,
+  Dumbbell,
+  FaceSlightlyFrowning,
+  FileText,
+  Files,
+  Flag,
+  Flame,
+  FolderOpen,
+  Heart,
+  House,
+  Image as ImageIcon,
+  Inbox,
+  KeyRound,
+  Keyboard,
+  Layers,
+  Library,
+  Lightbulb,
+  Lock,
+  Moon,
+  Orbit,
+  PartyPopper,
+  PenLine,
+  RefreshCw,
+  Save,
+  Settings,
+  Shuffle,
+  Sparkles,
+  Sprout,
+  Star,
+  Target,
+  Timer,
+  Trash,
+  TriangleAlert,
+  Trophy,
+  Upload,
+  X,
+  type LucideIcon,
+} from "lucide-react";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 interface Flashcard {
@@ -107,13 +159,18 @@ function pointsFor(card: Flashcard): number {
   return 10 + bonus;
 }
 
-function gradeFor(pct: number) {
-  if (pct >= 95) return { grade: "A+", message: "Flawless! You nailed it! 🏆", emoji: "🏆", color: "#10b981" };
-  if (pct >= 90) return { grade: "A", message: "Excellent work! 🎉", emoji: "🎉", color: "#22c55e" };
-  if (pct >= 80) return { grade: "B", message: "Great job, keep it up! 💪", emoji: "🌟", color: "#3b82f6" };
-  if (pct >= 70) return { grade: "C", message: "Good effort — review and retry! 📖", emoji: "📖", color: "#6366f1" };
-  if (pct >= 60) return { grade: "D", message: "Keep studying, you'll get there! 💫", emoji: "💫", color: "#f59e0b" };
-  return { grade: "F", message: "Don't give up — study mode can help! 💙", emoji: "📚", color: "#f43f5e" };
+function gradeFor(pct: number): {
+  grade: string;
+  message: string;
+  icon: LucideIcon;
+  color: string;
+} {
+  if (pct >= 95) return { grade: "A+", message: "Flawless! You nailed it!", icon: Trophy, color: "#10b981" };
+  if (pct >= 90) return { grade: "A", message: "Excellent work!", icon: PartyPopper, color: "#22c55e" };
+  if (pct >= 80) return { grade: "B", message: "Great job, keep it up!", icon: Star, color: "#3b82f6" };
+  if (pct >= 70) return { grade: "C", message: "Good effort — review and retry!", icon: BookOpen, color: "#6366f1" };
+  if (pct >= 60) return { grade: "D", message: "Keep studying, you'll get there!", icon: Orbit, color: "#f59e0b" };
+  return { grade: "F", message: "Don't give up — study mode can help!", icon: Library, color: "#f43f5e" };
 }
 
 /**
@@ -154,134 +211,20 @@ function formatTime(seconds: number): string {
   return m > 0 ? `${m}m ${s}s` : `${s}s`;
 }
 
-// ─── Icons ───────────────────────────────────────────────────────────────────
-const Icons = {
-  Home: () => (
-    <svg viewBox="0 0 24 24" fill="currentColor">
-      <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z" />
-    </svg>
-  ),
-  Upload: () => (
-    <svg viewBox="0 0 24 24" fill="currentColor">
-      <path d="M9 16h6v-6h4l-7-7-7 7h4zm-4 2h14v2H5z" />
-    </svg>
-  ),
-  Cards: () => (
-    <svg viewBox="0 0 24 24" fill="currentColor">
-      <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z" />
-    </svg>
-  ),
-  Sessions: () => (
-    <svg viewBox="0 0 24 24" fill="currentColor">
-      <path d="M4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm16-4H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-1 9H9V9h10v2zm-4 4H9v-2h6v2zm4-8H9V5h10v2z" />
-    </svg>
-  ),
-  Star: () => (
-    <svg viewBox="0 0 24 24" fill="currentColor">
-      <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" />
-    </svg>
-  ),
-  Check: () => (
-    <svg viewBox="0 0 24 24" fill="currentColor">
-      <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
-    </svg>
-  ),
-  Close: () => (
-    <svg viewBox="0 0 24 24" fill="currentColor">
-      <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
-    </svg>
-  ),
-  ArrowLeft: () => (
-    <svg viewBox="0 0 24 24" fill="currentColor">
-      <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z" />
-    </svg>
-  ),
-  ArrowRight: () => (
-    <svg viewBox="0 0 24 24" fill="currentColor">
-      <path d="M12 4l-1.41 1.41L16.17 11H4v2h12.17l-5.58 5.59L12 20l8-8z" />
-    </svg>
-  ),
-  Refresh: () => (
-    <svg viewBox="0 0 24 24" fill="currentColor">
-      <path d="M17.65 6.35A7.958 7.958 0 0012 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0112 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z" />
-    </svg>
-  ),
-  Delete: () => (
-    <svg viewBox="0 0 24 24" fill="currentColor">
-      <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" />
-    </svg>
-  ),
-  Bulb: () => (
-    <svg viewBox="0 0 24 24" fill="currentColor">
-      <path d="M9 21c0 .55.45 1 1 1h4c.55 0 1-.45 1-1v-1H9v1zm3-19C8.14 2 5 5.14 5 9c0 2.38 1.19 4.47 3 5.74V17c0 .55.45 1 1 1h6c.55 0 1-.45 1-1v-2.26c1.81-1.27 3-3.36 3-5.74 0-3.86-3.14-7-7-7z" />
-    </svg>
-  ),
-  Trophy: () => (
-    <svg viewBox="0 0 24 24" fill="currentColor">
-      <path d="M19 5h-2V3H7v2H5c-1.1 0-2 .9-2 2v1c0 2.55 1.92 4.63 4.39 4.94.63 1.5 1.98 2.63 3.61 2.96V19H7v2h10v-2h-4v-3.1c1.63-.33 2.98-1.46 3.61-2.96C19.08 12.63 21 10.55 21 8V7c0-1.1-.9-2-2-2zM5 8V7h2v3.82C5.84 10.4 5 9.3 5 8zm14 0c0 1.3-.84 2.4-2 2.82V7h2v1z" />
-    </svg>
-  ),
-  Play: () => (
-    <svg viewBox="0 0 24 24" fill="currentColor">
-      <path d="M8 5v14l11-7z" />
-    </svg>
-  ),
-  Sparkle: () => (
-    <svg viewBox="0 0 24 24" fill="currentColor">
-      <path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4L12 17l-6.2 4.3 2.4-7.4L2 9.4h7.6z" />
-    </svg>
-  ),
-  Image: () => (
-    <svg viewBox="0 0 24 24" fill="currentColor">
-      <path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z" />
-    </svg>
-  ),
-  PDF: () => (
-    <svg viewBox="0 0 24 24" fill="currentColor">
-      <path d="M20 2H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-8.5 7.5c0 .83-.67 1.5-1.5 1.5H9v2H7.5V7H10c.83 0 1.5.67 1.5 1.5v1zm5 2c0 .83-.67 1.5-1.5 1.5h-2.5V7H15c.83 0 1.5.67 1.5 1.5v3zm4-3H19v1h1.5V11H19v2h-1.5V7h3v1.5zM9 9.5h1v-1H9v1zM4 6H2v14c0 1.1.9 2 2 2h14v-2H4V6zm10 5.5h1v-3h-1v3z" />
-    </svg>
-  ),
-  Keyboard: () => (
-    <svg viewBox="0 0 24 24" fill="currentColor">
-      <path d="M20 5H4c-1.1 0-1.99.9-1.99 2L2 17c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm-9 3h2v2h-2V8zm0 3h2v2h-2v-2zM8 8h2v2H8V8zm0 3h2v2H8v-2zm-1 2H5v-2h2v2zm0-3H5V8h2v2zm9 7H8v-2h8v2zm0-4h-2v-2h2v2zm0-3h-2V8h2v2zm3 3h-2v-2h2v2zm0-3h-2V8h2v2z" />
-    </svg>
-  ),
-  Book: () => (
-    <svg viewBox="0 0 24 24" fill="currentColor">
-      <path d="M18 2H9c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h9c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H9V4h9v12zM3 15v-2h2v2H3zm0 4v-2h2v2H3zm0-8V9h2v2H3zm0-4V5h2v2H3zm0 12c-1.1 0-2 .9-2 2h2v-2zm0-16c-1.1 0-2 .9-2 2h2V3z" />
-    </svg>
-  ),
-  Exam: () => (
-    <svg viewBox="0 0 24 24" fill="currentColor">
-      <path d="M19 3h-4.18C14.4 1.84 13.3 1 12 1s-2.4.84-2.82 2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 0c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1zm-1.5 15.5L7 15l1.41-1.41L10.5 15.67l4.59-4.59L16.5 12.5l-6 6z" />
-    </svg>
-  ),
-  Flame: () => (
-    <svg viewBox="0 0 24 24" fill="currentColor">
-      <path d="M13.5 1.5c.3 2.4-.6 4.2-2.2 5.6-1.1 1-2.3 1.7-2.3 3.4 0 .8.3 1.5.8 2-.1-2.6 1.6-3.9 2.7-5C13.6 6.3 14.3 4.7 13.5 1.5zM11 22c-3.3 0-6-2.5-6-5.6 0-2.4 1.2-3.9 2.6-5.3 1-1 2-2 2.4-3.2.5 1.2 1.4 1.9 2.3 2.6 1.2 1 2.7 2.2 2.7 4.3C17 19.1 14.4 22 11 22z" />
-    </svg>
-  ),
-  Clock: () => (
-    <svg viewBox="0 0 24 24" fill="currentColor">
-      <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2zm4.2 14.2L11 13V7h1.5v5.2l4.5 2.7-.8 1.3z" />
-    </svg>
-  ),
-  Target: () => (
-    <svg viewBox="0 0 24 24" fill="currentColor">
-      <path d="M12 2a10 10 0 100 20 10 10 0 000-20zm0 18a8 8 0 110-16 8 8 0 010 16zm0-13a5 5 0 100 10 5 5 0 000-10zm0 8a3 3 0 110-6 3 3 0 010 6z" />
-    </svg>
-  ),
-  Shuffle: () => (
-    <svg viewBox="0 0 24 24" fill="currentColor">
-      <path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z" />
-    </svg>
-  ),
-  Stats: () => (
-    <svg viewBox="0 0 24 24" fill="currentColor">
-      <path d="M5 9.2h3V19H5V9.2zM10.6 5h2.8v14h-2.8V5zm5.6 8H19v6h-2.8v-6z" />
-    </svg>
-  ),
-};
+/** Lucide icon for a study set's source type. */
+function SourceTypeIcon({ type, size }: { type: string; size: number }) {
+  const Icon =
+    type === "pdf"
+      ? FileText
+      : type === "image"
+      ? ImageIcon
+      : type === "docx"
+      ? PenLine
+      : type === "mixed"
+      ? Files
+      : Keyboard;
+  return <Icon size={size} strokeWidth={1.75} aria-hidden />;
+}
 
 // ─── Confetti ────────────────────────────────────────────────────────────────
 function launchConfetti() {
@@ -305,20 +248,49 @@ function launchConfetti() {
 }
 
 // ─── Toast ───────────────────────────────────────────────────────────────────
-function showToast(msg: string, emoji = "✨") {
-  const existing = document.querySelector(".toast");
-  if (existing) existing.remove();
-  const el = document.createElement("div");
-  el.className = "toast";
-  el.textContent = `${emoji} ${msg}`;
-  document.body.appendChild(el);
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => el.classList.add("show"));
-  });
-  setTimeout(() => {
-    el.classList.remove("show");
-    setTimeout(() => el.remove(), 300);
-  }, 2800);
+/** Sink installed by <ToastHost/> while it is mounted (null otherwise). */
+let pushToast: ((msg: string, icon: LucideIcon) => void) | null = null;
+
+/**
+ * Fire a toast from anywhere — event handlers, async callbacks, promise
+ * rejections — without prop-drilling. The icon is a Lucide component so the
+ * toast renders a real SVG instead of an emoji.
+ */
+function showToast(msg: string, icon: LucideIcon = Sparkles) {
+  pushToast?.(msg, icon);
+}
+
+/**
+ * Renders toasts inside React. Registered as the module-level sink above, so
+ * showToast() keeps its call-site ergonomics while the markup stays in the tree.
+ */
+function ToastHost() {
+  const [toast, setToast] = useState<{ msg: string; icon: LucideIcon; key: number } | null>(null);
+
+  useEffect(() => {
+    pushToast = (msg, icon) => setToast({ msg, icon, key: Date.now() });
+    return () => {
+      pushToast = null;
+    };
+  }, []);
+
+  // The slide-in/hold/slide-out is a single CSS animation (see .toast in
+  // globals.css), so no visibility state is needed. A new toast bumps `key`,
+  // which remounts the node and restarts the animation.
+  useEffect(() => {
+    if (!toast) return;
+    const timer = setTimeout(() => setToast(null), 3100);
+    return () => clearTimeout(timer);
+  }, [toast]);
+
+  if (!toast) return null;
+  const Icon = toast.icon;
+  return (
+    <div className="toast" key={toast.key} role="status">
+      <Icon aria-hidden />
+      <span>{toast.msg}</span>
+    </div>
+  );
 }
 
 // ─── Study Mode: traditional flashcard (flip to reveal) ─────────────────────
@@ -376,7 +348,7 @@ function StudyCard({
       {/* Progress */}
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
         <button className="btn btn-ghost btn-sm" onClick={onPrev} disabled={index === 0} style={{ padding: "6px 10px", borderRadius: 12 }}>
-          <Icons.ArrowLeft />
+          <ArrowLeft />
         </button>
         <div style={{ flex: 1 }}>
           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6, fontSize: 13, color: "var(--text-muted)", fontWeight: 600 }}>
@@ -390,7 +362,7 @@ function StudyCard({
           </div>
         </div>
         <button className="btn btn-ghost btn-sm" onClick={onNext} disabled={index === total - 1} style={{ padding: "6px 10px", borderRadius: 12 }}>
-          <Icons.ArrowRight />
+          <ArrowRight />
         </button>
       </div>
 
@@ -414,13 +386,16 @@ function StudyCard({
               border: "2px solid rgba(37,99,235,0.15)",
             }}
           >
-            <div style={{ fontSize: 36, marginBottom: 12 }}>🤔</div>
+            <div style={{ marginBottom: 12, color: "var(--accent-dark)" }}>
+              <CircleQuestionMark size={36} strokeWidth={1.5} aria-hidden />
+            </div>
             <p style={{ textAlign: "center", fontSize: 18, fontWeight: 700, color: "var(--text)", lineHeight: 1.4, margin: 0 }}>
               {card.question}
             </p>
             {!flipped && (
-              <p style={{ marginTop: 20, fontSize: 13, color: "var(--text-muted)", fontWeight: 500 }}>
-                Tap to reveal answer 💫
+              <p style={{ marginTop: 20, fontSize: 13, color: "var(--text-muted)", fontWeight: 500, display: "flex", alignItems: "center", gap: 6 }}>
+                <Orbit size={14} aria-hidden />
+                Tap to reveal answer
               </p>
             )}
           </div>
@@ -438,7 +413,9 @@ function StudyCard({
               border: "2px solid rgba(16,185,129,0.25)",
             }}
           >
-            <div style={{ fontSize: 32, marginBottom: 10 }}>💡</div>
+            <div style={{ marginBottom: 10, color: "#f59e0b" }}>
+              <Lightbulb size={32} strokeWidth={1.5} aria-hidden />
+            </div>
             <p style={{ textAlign: "center", fontSize: 16, fontWeight: 600, color: "var(--text)", lineHeight: 1.5, margin: 0, overflowY: "auto", maxHeight: 200 }}>
               {card.answer}
             </p>
@@ -453,7 +430,7 @@ function StudyCard({
           onClick={() => setShowHint(!showHint)}
           style={{ alignSelf: "center", color: "#f59e0b", gap: 6 }}
         >
-          <Icons.Bulb />
+          <Lightbulb />
           {showHint ? "Hide hint" : "Show hint"}
         </button>
       )}
@@ -467,8 +444,13 @@ function StudyCard({
           color: "#92400e",
           textAlign: "center",
           animation: "fadeIn 0.3s ease",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 8,
         }}>
-          💡 {card.hint}
+          <Lightbulb size={16} aria-hidden />
+          <span>{card.hint}</span>
         </div>
       )}
 
@@ -481,7 +463,7 @@ function StudyCard({
             onClick={handleDontKnow}
             disabled={answering}
           >
-            <Icons.Close />
+            <X />
             Still Learning
           </button>
           <button
@@ -490,8 +472,8 @@ function StudyCard({
             onClick={handleKnow}
             disabled={answering}
           >
-            <Icons.Check />
-            Got it! ✓
+            <Check />
+            Got it!
           </button>
         </div>
       )}
@@ -499,7 +481,16 @@ function StudyCard({
       {/* Progress indicator */}
       {progress && (
         <div style={{ textAlign: "center", fontSize: 12, color: "var(--text-muted)" }}>
-          {progress.isKnown ? "✅ Marked as known" : "🔄 Still learning"} · {progress.attempts} attempt{progress.attempts !== 1 ? "s" : ""}
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+            {progress.isKnown ? (
+              <CircleCheckBig size={13} aria-hidden />
+            ) : (
+              <RefreshCw size={13} aria-hidden />
+            )}
+            {progress.isKnown ? "Marked as known" : "Still learning"}
+          </span>
+          {" · "}
+          {progress.attempts} attempt{progress.attempts !== 1 ? "s" : ""}
         </div>
       )}
     </div>
@@ -526,19 +517,21 @@ function ReviewSummary({
     if (pct >= 80) launchConfetti();
   }, [pct]);
 
-  const emoji = pct >= 90 ? "🏆" : pct >= 70 ? "🌟" : pct >= 50 ? "💪" : "📚";
+  const SummaryIcon = pct >= 90 ? Trophy : pct >= 70 ? Star : pct >= 50 ? Dumbbell : Library;
   const message =
     pct >= 90
-      ? "Outstanding! You're a genius! 🎉"
+      ? "Outstanding! You're a genius!"
       : pct >= 70
-      ? "Great job! Keep it up! 💪"
+      ? "Great job! Keep it up!"
       : pct >= 50
-      ? "Good progress! Review the ones you missed! 📖"
-      : "Keep studying! You've got this! 💖";
+      ? "Good progress! Review the ones you missed!"
+      : "Keep studying! You've got this!";
 
   return (
     <div className="animate-fade-in" style={{ textAlign: "center", padding: "20px 0" }}>
-      <div style={{ fontSize: 80 }}>{emoji}</div>
+      <div style={{ display: "flex", justifyContent: "center", color: "var(--accent-dark)" }}>
+        <SummaryIcon size={80} strokeWidth={1.5} aria-hidden />
+      </div>
       <h2 className="gradient-text" style={{ fontSize: 28, fontWeight: 800, margin: "8px 0 4px" }}>
         Session Complete!
       </h2>
@@ -567,8 +560,8 @@ function ReviewSummary({
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 24 }}>
         {[
           { label: "Total", value: total, color: "#3b82f6", bg: "#eef2ff" },
-          { label: "Known ✅", value: known, color: "#10b981", bg: "#f0fff8" },
-          { label: "Review 📚", value: total - known, color: "#f43f5e", bg: "#eff6ff" },
+          { label: "Known", value: known, color: "#10b981", bg: "#f0fff8" },
+          { label: "Review", value: total - known, color: "#f43f5e", bg: "#eff6ff" },
         ].map((s) => (
           <div key={s.label} style={{ background: s.bg, borderRadius: 16, padding: "14px 8px" }}>
             <div style={{ fontSize: 24, fontWeight: 800, color: s.color }}>{s.value}</div>
@@ -580,12 +573,12 @@ function ReviewSummary({
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {total - known > 0 && (
           <button className="btn btn-primary btn-lg" onClick={onReviewWeak} style={{ width: "100%" }}>
-            <Icons.Refresh />
+            <RefreshCw />
             Review {total - known} Missed Cards
           </button>
         )}
         <button className="btn btn-secondary" onClick={onRestart} style={{ width: "100%" }}>
-          <Icons.Refresh />
+          <RefreshCw />
           Restart All Cards
         </button>
       </div>
@@ -779,7 +772,7 @@ function UploadPage({ onCardsReady }: { onCardsReady: (cards: Flashcard[], title
       }
 
       onCardsReady(data.cards, data.title, data.summary, sourceType);
-      showToast(`Generated ${data.cards.length} flashcards!`, "🎉");
+      showToast(`Generated ${data.cards.length} flashcards!`, PartyPopper);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -793,7 +786,10 @@ function UploadPage({ onCardsReady }: { onCardsReady: (cards: Flashcard[], title
   return (
     <div className="animate-fade-in" style={{ padding: "20px 16px" }}>
       <h2 style={{ fontSize: 22, fontWeight: 800, margin: "0 0 4px" }}>
-        📤 Upload Study Material
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+          <Upload size={20} aria-hidden />
+          Upload Study Material
+        </span>
       </h2>
       <p style={{ color: "var(--text-muted)", margin: "0 0 20px", fontSize: 14 }}>
         Upload PDFs, Word docs or photos — you can select several at once — or paste text!
@@ -802,8 +798,8 @@ function UploadPage({ onCardsReady }: { onCardsReady: (cards: Flashcard[], title
       {/* Mode toggle */}
       <div style={{ display: "flex", background: "#dbeafe", borderRadius: 50, padding: 4, marginBottom: 20, gap: 4 }}>
         {[
-          { id: "file" as const, label: "📄 Files / Photos", icon: null },
-          { id: "text" as const, label: "⌨️ Paste Text", icon: null },
+          { id: "file" as const, label: "Files / Photos", Icon: FileText },
+          { id: "text" as const, label: "Paste Text", Icon: Keyboard },
         ].map((m) => (
           <button
             key={m.id}
@@ -817,11 +813,16 @@ function UploadPage({ onCardsReady }: { onCardsReady: (cards: Flashcard[], title
               fontWeight: 700,
               fontSize: 14,
               transition: "all 0.2s",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 7,
               background: mode === m.id ? "linear-gradient(135deg, var(--accent-dark), var(--violet))" : "transparent",
               color: mode === m.id ? "white" : "var(--text-muted)",
               boxShadow: mode === m.id ? "0 2px 12px rgba(37,99,235,0.3)" : "none",
             }}
           >
+            <m.Icon size={15} aria-hidden />
             {m.label}
           </button>
         ))}
@@ -845,8 +846,12 @@ function UploadPage({ onCardsReady }: { onCardsReady: (cards: Flashcard[], title
               style={{ display: "none" }}
               onChange={handleFileChange}
             />
-            <div style={{ fontSize: 48, marginBottom: 10 }}>
-              {picked.length ? "🖼️" : "📁"}
+            <div style={{ marginBottom: 10, color: "var(--accent-dark)" }}>
+              {picked.length ? (
+                <ImageIcon size={48} strokeWidth={1.5} aria-hidden />
+              ) : (
+                <FolderOpen size={48} strokeWidth={1.5} aria-hidden />
+              )}
             </div>
             <p style={{ fontWeight: 700, fontSize: 16, margin: "0 0 6px" }}>
               {picked.length ? "Add more files" : "Tap to upload or drag & drop"}
@@ -898,14 +903,20 @@ function UploadPage({ onCardsReady }: { onCardsReady: (cards: Flashcard[], title
                         style={{ width: "100%", height: "100%", objectFit: "cover" }}
                       />
                     ) : (
-                      <div style={{ fontSize: 34 }}>{item.kind === "Word" ? "📝" : "📄"}</div>
+                      <div style={{ color: "var(--accent-dark)" }}>
+                        {item.kind === "Word" ? (
+                          <PenLine size={34} strokeWidth={1.5} aria-hidden />
+                        ) : (
+                          <FileText size={34} strokeWidth={1.5} aria-hidden />
+                        )}
+                      </div>
                     )}
                     <button
                       className="remove-btn"
                       onClick={(e) => { e.stopPropagation(); removeFile(item.id); }}
                       aria-label={`Remove ${item.file.name}`}
                     >
-                      <Icons.Close />
+                      <X />
                     </button>
                     <span
                       style={{
@@ -931,8 +942,8 @@ function UploadPage({ onCardsReady }: { onCardsReady: (cards: Flashcard[], title
 
               <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "10px 0 0", textAlign: "center" }}>
                 {picked.length > 1
-                  ? `All ${picked.length} files (${photos} photo${photos === 1 ? "" : "s"}) are combined into one study set 📚`
-                  : "Ready to generate ✨"}
+                  ? `All ${picked.length} files (${photos} photo${photos === 1 ? "" : "s"}) are combined into one study set`
+                  : "Ready to generate"}
               </p>
             </div>
           )}
@@ -949,7 +960,7 @@ function UploadPage({ onCardsReady }: { onCardsReady: (cards: Flashcard[], title
                 }
               }}
             >
-              <Icons.Image />
+              <ImageIcon />
               Camera
             </button>
             <button
@@ -962,7 +973,7 @@ function UploadPage({ onCardsReady }: { onCardsReady: (cards: Flashcard[], title
                 }
               }}
             >
-              <Icons.PDF />
+              <FileText />
               Gallery / Files
             </button>
           </div>
@@ -972,7 +983,7 @@ function UploadPage({ onCardsReady }: { onCardsReady: (cards: Flashcard[], title
           <textarea
             value={textInput}
             onChange={(e) => setTextInput(e.target.value)}
-            placeholder="Paste your notes, book excerpt, or any study text here... The AI will turn it into flashcards! 📚"
+            placeholder="Paste your notes, book excerpt, or any study text here... The AI will turn it into flashcards!"
             style={{
               width: "100%",
               minHeight: 200,
@@ -1012,7 +1023,7 @@ function UploadPage({ onCardsReady }: { onCardsReady: (cards: Flashcard[], title
             gap: 8,
           }}
         >
-          <span>⚠️</span>
+          <TriangleAlert size={17} aria-hidden style={{ flexShrink: 0, marginTop: 1 }} />
           <span>{error}</span>
         </div>
       )}
@@ -1032,17 +1043,17 @@ function UploadPage({ onCardsReady }: { onCardsReady: (cards: Flashcard[], title
           </>
         ) : (
           <>
-            <Icons.Sparkle />
+            <Sparkles />
             {mode === "file" && picked.length > 1
-              ? `Generate from ${picked.length} files ✨`
-              : "Generate Flashcards with AI ✨"}
+              ? `Generate from ${picked.length} files`
+              : "Generate Flashcards with AI"}
           </>
         )}
       </button>
 
       {loading && (
         <p style={{ textAlign: "center", fontSize: 13, color: "var(--text-muted)", marginTop: 12 }}>
-          🤖 AI is reading your material... This may take a moment!
+          <Bot size={15} className="icon-inline" aria-hidden /> AI is reading your material... This may take a moment!
         </p>
       )}
     </div>
@@ -1060,7 +1071,9 @@ function ModeSelect({
   return (
     <div className="animate-fade-in" style={{ padding: "4px 0" }}>
       <div style={{ textAlign: "center", marginBottom: 20 }}>
-        <div className="animate-float" style={{ fontSize: 44, marginBottom: 6 }}>🎯</div>
+        <div className="animate-float" style={{ marginBottom: 6, color: "var(--accent-dark)" }}>
+          <Target size={44} strokeWidth={1.5} aria-hidden />
+        </div>
         <h2 style={{ margin: "0 0 6px", fontSize: 21, fontWeight: 800 }}>How do you want to study?</h2>
         <p style={{ margin: 0, fontSize: 14, color: "var(--text-muted)" }}>
           {cardCount} card{cardCount === 1 ? "" : "s"} ready · pick a mode to begin
@@ -1071,7 +1084,7 @@ function ModeSelect({
         {/* Study mode */}
         <button className="mode-card" onClick={() => onSelect("study")}>
           <div className="mode-icon" style={{ background: "linear-gradient(135deg, #3b82f6, #6366f1)" }}>
-            <Icons.Book />
+            <BookOpen />
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <p style={{ margin: "0 0 4px", fontSize: 16, fontWeight: 800 }}>Study Mode</p>
@@ -1089,7 +1102,7 @@ function ModeSelect({
         {/* Exam mode */}
         <button className="mode-card" onClick={() => onSelect("exam")}>
           <div className="mode-icon" style={{ background: "linear-gradient(135deg, #1d4ed8, #7c3aed)" }}>
-            <Icons.Exam />
+            <ClipboardCheck />
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <p style={{ margin: "0 0 4px", fontSize: 16, fontWeight: 800 }}>Exam Mode</p>
@@ -1106,7 +1119,7 @@ function ModeSelect({
       </div>
 
       <p style={{ textAlign: "center", fontSize: 12, color: "var(--text-muted)", marginTop: 18 }}>
-        Tip: warm up in <strong>Study Mode</strong>, then test yourself in <strong>Exam Mode</strong> 💙
+        Tip: warm up in <strong>Study Mode</strong>, then test yourself in <strong>Exam Mode</strong>
       </p>
     </div>
   );
@@ -1200,10 +1213,22 @@ function ExamCard({
           if (answered) {
             if (i === correctIndex) {
               cls += " reveal-correct";
-              mark = <span style={{ marginLeft: "auto", fontSize: 18 }}>✅</span>;
+              mark = (
+                <CircleCheckBig
+                  size={18}
+                  aria-hidden
+                  style={{ marginLeft: "auto", flexShrink: 0, color: "#10b981" }}
+                />
+              );
             } else if (i === chosen) {
               cls += " selected-wrong";
-              mark = <span style={{ marginLeft: "auto", fontSize: 18 }}>❌</span>;
+              mark = (
+                <CircleX
+                  size={18}
+                  aria-hidden
+                  style={{ marginLeft: "auto", flexShrink: 0, color: "#f43f5e" }}
+                />
+              );
             } else {
               cls += " dimmed";
             }
@@ -1227,7 +1252,11 @@ function ExamCard({
       {answered && (
         <>
           <div className={`feedback ${isCorrect ? "feedback-correct" : "feedback-wrong"}`}>
-            <span style={{ fontSize: 20, lineHeight: 1 }}>{isCorrect ? "🎉" : "😅"}</span>
+            {isCorrect ? (
+              <PartyPopper size={20} aria-hidden style={{ flexShrink: 0 }} />
+            ) : (
+              <FaceSlightlyFrowning size={20} aria-hidden style={{ flexShrink: 0 }} />
+            )}
             <span>
               <strong>{isCorrect ? "Correct!" : "Wrong!"}</strong>
               {isCorrect
@@ -1239,15 +1268,15 @@ function ExamCard({
           </div>
 
           <button className="btn btn-primary btn-lg" style={{ width: "100%" }} onClick={onNext}>
-            {isLast ? "See Results 🏁" : "Next Question"}
-            {!isLast && <Icons.ArrowRight />}
+            {isLast ? "See Results" : "Next Question"}
+            {isLast ? <Flag /> : <ArrowRight />}
           </button>
         </>
       )}
 
       {!answered && (
         <p style={{ textAlign: "center", fontSize: 12, color: "var(--text-muted)", margin: "2px 0 0" }}>
-          Tip: press <strong>1–4</strong> to answer quickly ⌨️
+          Tip: press <strong>1–4</strong> to answer quickly
         </p>
       )}
     </div>
@@ -1278,7 +1307,7 @@ function ExamSummary({
   const correct = answers.filter((a) => a.isCorrect).length;
   const wrong = total - correct;
   const pct = total ? Math.round((correct / total) * 100) : 0;
-  const { grade, message, emoji, color } = gradeFor(pct);
+  const { grade, message, icon: GradeIcon, color } = gradeFor(pct);
   const missed = answers.filter((a) => !a.isCorrect);
 
   useEffect(() => {
@@ -1287,7 +1316,9 @@ function ExamSummary({
 
   return (
     <div className="animate-fade-in" style={{ textAlign: "center", padding: "10px 0" }}>
-      <div style={{ fontSize: 72 }}>{emoji}</div>
+      <div style={{ display: "flex", justifyContent: "center", color }}>
+        <GradeIcon size={72} strokeWidth={1.5} aria-hidden />
+      </div>
       <h2 className="gradient-text" style={{ fontSize: 27, fontWeight: 800, margin: "6px 0 4px" }}>
         Exam Complete!
       </h2>
@@ -1308,15 +1339,15 @@ function ExamSummary({
           Grade: {grade}
         </span>
         <span className="badge" style={{ background: "#eef2ff", color: "#4338ca", fontSize: 14, padding: "6px 14px" }}>
-          ⭐ {score} / {maxScore} pts
+          <Star size={14} className="icon-inline" aria-hidden /> {score} / {maxScore} pts
         </span>
       </div>
 
       {/* Stats */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 12 }}>
         {[
-          { label: "Correct ✅", value: correct, color: "#10b981", bg: "#ecfdf5" },
-          { label: "Wrong ❌", value: wrong, color: "#f43f5e", bg: "#fff1f2" },
+          { label: "Correct", value: correct, color: "#10b981", bg: "#ecfdf5" },
+          { label: "Wrong", value: wrong, color: "#f43f5e", bg: "#fff1f2" },
           { label: "Questions", value: total, color: "#3b82f6", bg: "#eff6ff" },
         ].map((s) => (
           <div key={s.label} style={{ background: s.bg, borderRadius: 16, padding: "14px 8px" }}>
@@ -1327,11 +1358,17 @@ function ExamSummary({
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 22 }}>
         <div style={{ background: "white", borderRadius: 16, padding: "12px 8px", boxShadow: "0 4px 16px rgba(29,78,216,0.08)" }}>
-          <div style={{ fontSize: 18, fontWeight: 800, color: "#ea580c" }}>🔥 {bestStreak}</div>
+          <div style={{ fontSize: 18, fontWeight: 800, color: "#ea580c", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+            <Flame size={18} aria-hidden />
+            {bestStreak}
+          </div>
           <div style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 600 }}>Best streak</div>
         </div>
         <div style={{ background: "white", borderRadius: 16, padding: "12px 8px", boxShadow: "0 4px 16px rgba(29,78,216,0.08)" }}>
-          <div style={{ fontSize: 18, fontWeight: 800, color: "#1d4ed8" }}>⏱ {formatTime(elapsed)}</div>
+          <div style={{ fontSize: 18, fontWeight: 800, color: "#1d4ed8", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+            <Timer size={18} aria-hidden />
+            {formatTime(elapsed)}
+          </div>
           <div style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 600 }}>Time taken</div>
         </div>
       </div>
@@ -1340,7 +1377,7 @@ function ExamSummary({
       {missed.length > 0 && (
         <div style={{ textAlign: "left", marginBottom: 22 }}>
           <h3 style={{ fontSize: 15, fontWeight: 800, margin: "0 0 10px" }}>
-            📕 Review missed questions ({missed.length})
+            <BookBookmark size={16} className="icon-inline" aria-hidden /> Review missed questions ({missed.length})
           </h3>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {missed.map((a, i) => (
@@ -1357,11 +1394,11 @@ function ExamSummary({
                   {a.card.question}
                 </p>
                 <p style={{ margin: "0 0 4px", fontSize: 13, display: "flex", gap: 6 }}>
-                  <span>❌</span>
+                  <CircleX size={15} aria-hidden style={{ flexShrink: 0, marginTop: 2, color: "#f43f5e" }} />
                   <span style={{ color: "#9f1239" }}>Your answer: {a.chosenOption}</span>
                 </p>
                 <p style={{ margin: 0, fontSize: 13, display: "flex", gap: 6 }}>
-                  <span>✅</span>
+                  <CircleCheckBig size={15} aria-hidden style={{ flexShrink: 0, marginTop: 2, color: "#10b981" }} />
                   <span style={{ color: "#065f46", fontWeight: 600 }}>{a.card.answer}</span>
                 </p>
               </div>
@@ -1374,16 +1411,16 @@ function ExamSummary({
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {missed.length > 0 && (
           <button className="btn btn-primary btn-lg" style={{ width: "100%" }} onClick={onStudyMissed}>
-            <Icons.Book />
+            <BookOpen />
             Study {missed.length} Missed Card{missed.length === 1 ? "" : "s"}
           </button>
         )}
         <button className="btn btn-secondary" style={{ width: "100%" }} onClick={onRetry}>
-          <Icons.Shuffle />
+          <Shuffle />
           Retake Exam (New Order)
         </button>
         <button className="btn btn-ghost" style={{ width: "100%" }} onClick={onBackToModes}>
-          <Icons.ArrowLeft />
+          <ArrowLeft />
           Back to Modes
         </button>
       </div>
@@ -1679,9 +1716,9 @@ function QuizPage({
     try {
       await onSave(title);
       setSaved(true);
-      showToast("Study set saved! 💾", "✅");
+      showToast("Study set saved!", CircleCheckBig);
     } catch {
-      showToast("Failed to save", "❌");
+      showToast("Failed to save", CircleX);
     } finally {
       setSaving(false);
     }
@@ -1695,7 +1732,7 @@ function QuizPage({
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
         <button className="btn btn-ghost btn-sm" onClick={onBack} style={{ padding: "6px 10px", borderRadius: 12 }}>
-          <Icons.ArrowLeft />
+          <ArrowLeft />
         </button>
         <div style={{ flex: 1, minWidth: 0 }}>
           <h2 style={{ margin: 0, fontSize: 17, fontWeight: 800, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
@@ -1714,11 +1751,19 @@ function QuizPage({
             disabled={saving}
             style={{ flexShrink: 0 }}
           >
-            {saving ? "..." : "💾 Save"}
+            {saving ? "..." : (
+              <>
+                <Save />
+                Save
+              </>
+            )}
           </button>
         )}
         {saved && (
-          <span style={{ fontSize: 12, color: "#10b981", fontWeight: 700, flexShrink: 0 }}>✅ Saved</span>
+          <span style={{ fontSize: 12, color: "#10b981", fontWeight: 700, flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 4 }}>
+            <CircleCheckBig size={14} aria-hidden />
+            Saved
+          </span>
         )}
       </div>
 
@@ -1730,14 +1775,14 @@ function QuizPage({
               className={mode === "study" ? "active" : ""}
               onClick={() => switchMode("study")}
             >
-              <Icons.Book />
+              <BookOpen />
               Study Mode
             </button>
             <button
               className={mode === "exam" ? "active" : ""}
               onClick={() => switchMode("exam")}
             >
-              <Icons.Exam />
+              <ClipboardCheck />
               Exam Mode
             </button>
           </div>
@@ -1750,7 +1795,7 @@ function QuizPage({
                 onClick={toggleShuffle}
                 style={{ flex: 1, gap: 6 }}
               >
-                <Icons.Shuffle />
+                <Shuffle />
                 Shuffle {shuffleStudy ? "On" : "Off"}
               </button>
               <button
@@ -1758,7 +1803,8 @@ function QuizPage({
                 onClick={toggleUnknownOnly}
                 style={{ flex: 1, gap: 6 }}
               >
-                📗 Unknown only {unknownOnly ? "On" : "Off"}
+                <BookOpenCheck />
+                Unknown only {unknownOnly ? "On" : "Off"}
               </button>
             </div>
           )}
@@ -1769,15 +1815,15 @@ function QuizPage({
       {mode === "exam" && !examDone && examQuestion && (
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
           <span className="score-pill">
-            <Icons.Star />
+            <Star />
             {score} pts
           </span>
           <span className={`score-pill ${streak >= 3 ? "streak-hot" : "streak"}`}>
-            <Icons.Flame />
+            <Flame />
             {streak} streak
           </span>
           <span className="score-pill" style={{ marginLeft: "auto" }}>
-            <Icons.Target />
+            <Target />
             {answers.length}/{examQuestions.length}
           </span>
         </div>
@@ -1804,8 +1850,12 @@ function QuizPage({
 
       {mode === "study" && !done && !currentCard && (
         <div style={{ textAlign: "center", padding: "40px 20px" }}>
-          <div style={{ fontSize: 56, marginBottom: 12 }}>
-            {unknownOnly ? "🎉" : "📭"}
+          <div style={{ marginBottom: 12, color: "var(--accent-dark)" }}>
+            {unknownOnly ? (
+              <PartyPopper size={56} strokeWidth={1.5} aria-hidden />
+            ) : (
+              <Inbox size={56} strokeWidth={1.5} aria-hidden />
+            )}
           </div>
           <h3 style={{ fontSize: 18, fontWeight: 800, margin: "0 0 8px" }}>
             {unknownOnly ? "No unknown cards left!" : "No cards to study"}
@@ -1817,7 +1867,7 @@ function QuizPage({
           </p>
           {unknownOnly && (
             <button className="btn btn-primary" onClick={showAllCards}>
-              <Icons.Refresh />
+              <RefreshCw />
               Show all {cards.length} cards
             </button>
           )}
@@ -1878,7 +1928,7 @@ function SessionsPage({ onOpen }: { onOpen: (id: number) => void }) {
       setSessions(data.sessions || []);
     } catch {
       if (signal?.aborted) return;
-      showToast("Failed to load sessions", "❌");
+      showToast("Failed to load sessions", CircleX);
     } finally {
       if (!signal?.aborted) setLoading(false);
     }
@@ -1902,9 +1952,9 @@ function SessionsPage({ onOpen }: { onOpen: (id: number) => void }) {
     try {
       await fetch(`/api/sessions/${id}`, { method: "DELETE" });
       setSessions((prev) => prev.filter((s) => s.id !== id));
-      showToast("Deleted!", "🗑️");
+      showToast("Deleted!", Trash);
     } catch {
-      showToast("Failed to delete", "❌");
+      showToast("Failed to delete", CircleX);
     } finally {
       setDeleting(null);
     }
@@ -1921,20 +1971,15 @@ function SessionsPage({ onOpen }: { onOpen: (id: number) => void }) {
     return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
   };
 
-  const typeIcon = (type: string) => {
-    if (type === "pdf") return "📄";
-    if (type === "image") return "🖼️";
-    if (type === "docx") return "📝";
-    if (type === "mixed") return "🗂️";
-    return "⌨️";
-  };
-
   return (
     <div style={{ padding: "20px 16px" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-        <h2 style={{ fontSize: 22, fontWeight: 800, margin: 0 }}>📚 My Study Sets</h2>
+        <h2 style={{ fontSize: 22, fontWeight: 800, margin: 0, display: "inline-flex", alignItems: "center", gap: 8 }}>
+          <Library size={21} aria-hidden />
+          My Study Sets
+        </h2>
         <button className="btn btn-ghost btn-sm" onClick={() => load()} style={{ padding: "6px 10px" }}>
-          <Icons.Refresh />
+          <RefreshCw />
         </button>
       </div>
 
@@ -1946,10 +1991,12 @@ function SessionsPage({ onOpen }: { onOpen: (id: number) => void }) {
         </div>
       ) : sessions.length === 0 ? (
         <div style={{ textAlign: "center", padding: "60px 20px" }}>
-          <div style={{ fontSize: 64, marginBottom: 16 }}>📭</div>
+          <div style={{ marginBottom: 16, color: "var(--text-muted)" }}>
+            <Inbox size={64} strokeWidth={1.5} aria-hidden />
+          </div>
           <h3 style={{ fontSize: 18, fontWeight: 700, margin: "0 0 8px" }}>No study sets yet!</h3>
           <p style={{ color: "var(--text-muted)", fontSize: 14, margin: 0 }}>
-            Upload a PDF or image to create your first flashcard set 💕
+            Upload a PDF or image to create your first flashcard set
           </p>
         </div>
       ) : (
@@ -1984,7 +2031,7 @@ function SessionsPage({ onOpen }: { onOpen: (id: number) => void }) {
                 fontSize: 26,
                 flexShrink: 0,
               }}>
-                {typeIcon(session.sourceType)}
+                <SourceTypeIcon type={session.sourceType} size={26} />
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <p style={{ margin: "0 0 3px", fontWeight: 700, fontSize: 15, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -2003,8 +2050,8 @@ function SessionsPage({ onOpen }: { onOpen: (id: number) => void }) {
                       }}
                     >
                       {session.knownCount >= session.cardCount && session.cardCount > 0
-                        ? "✅ All known"
-                        : `📗 ${session.knownCount}/${session.cardCount} known`}
+                        ? "All known"
+                        : `${session.knownCount}/${session.cardCount} known`}
                     </span>
                   )}
                 </p>
@@ -2016,9 +2063,9 @@ function SessionsPage({ onOpen }: { onOpen: (id: number) => void }) {
                   onClick={(e) => handleDelete(session.id, e)}
                   disabled={deleting === session.id}
                 >
-                  <Icons.Delete />
+                  <Trash />
                 </button>
-                <Icons.ArrowRight />
+                <ArrowRight />
               </div>
             </div>
           ))}
@@ -2099,7 +2146,7 @@ function StatsPage({ onOpenDeck }: { onOpenDeck: (id: number) => void }) {
       setStats(data as StatsData);
     } catch {
       if (signal?.aborted) return;
-      showToast("Failed to load stats", "❌");
+      showToast("Failed to load stats", CircleX);
     } finally {
       if (!signal?.aborted) setLoading(false);
     }
@@ -2115,18 +2162,13 @@ function StatsPage({ onOpenDeck }: { onOpenDeck: (id: number) => void }) {
     return () => controller.abort();
   }, [load]);
 
-  const typeIcon = (type: string) => {
-    if (type === "pdf") return "📄";
-    if (type === "image") return "🖼️";
-    if (type === "docx") return "📝";
-    if (type === "mixed") return "🗂️";
-    return "⌨️";
-  };
-
   if (loading && !stats) {
     return (
       <div style={{ padding: "20px 16px" }}>
-        <h2 style={{ fontSize: 22, fontWeight: 800, margin: "0 0 16px" }}>📊 Study Stats</h2>
+        <h2 style={{ fontSize: 22, fontWeight: 800, margin: "0 0 16px", display: "inline-flex", alignItems: "center", gap: 8 }}>
+          <ChartColumn size={21} aria-hidden />
+          Study Stats
+        </h2>
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           {[1, 2, 3, 4].map((i) => (
             <div key={i} className="shimmer" style={{ height: i === 1 ? 120 : 80, borderRadius: 16 }} />
@@ -2139,13 +2181,18 @@ function StatsPage({ onOpenDeck }: { onOpenDeck: (id: number) => void }) {
   if (!stats) {
     return (
       <div style={{ padding: "20px 16px", textAlign: "center" }}>
-        <h2 style={{ fontSize: 22, fontWeight: 800, margin: "0 0 16px" }}>📊 Study Stats</h2>
-        <div style={{ fontSize: 48, marginBottom: 10 }}>😴</div>
+        <h2 style={{ fontSize: 22, fontWeight: 800, margin: "0 0 16px", display: "inline-flex", alignItems: "center", gap: 8 }}>
+          <ChartColumn size={21} aria-hidden />
+          Study Stats
+        </h2>
+        <div style={{ marginBottom: 10, color: "var(--text-muted)" }}>
+          <Moon size={48} strokeWidth={1.5} aria-hidden />
+        </div>
         <p style={{ color: "var(--text-muted)", fontSize: 14, margin: "0 0 16px" }}>
           Couldn&apos;t load your stats right now.
         </p>
         <button className="btn btn-secondary" onClick={() => load()}>
-          <Icons.Refresh />
+          <RefreshCw />
           Try again
         </button>
       </div>
@@ -2156,19 +2203,47 @@ function StatsPage({ onOpenDeck }: { onOpenDeck: (id: number) => void }) {
   const studiedDecks = decks.filter((d) => d.answerCount > 0);
   const freshDecks = decks.filter((d) => d.answerCount === 0);
 
-  const overallTiles = [
-    { label: "Cards studied", value: `${overall.cardsStudied}`, icon: "🃏", color: "#3b82f6", bg: "#eff6ff" },
-    { label: "Study sessions", value: `${overall.studySessions}`, icon: "📚", color: "#7c3aed", bg: "#f3e8ff" },
-    { label: "Answers", value: `${overall.correctAnswers}✅ ${overall.incorrectAnswers}❌`, icon: "🎯", color: "#10b981", bg: "#ecfdf5" },
-    { label: "Accuracy", value: overall.accuracy === null ? "—" : `${overall.accuracy}%`, icon: "⭐", color: "#f59e0b", bg: "#fffbeb" },
+  const overallTiles: {
+    label: string;
+    value: ReactNode;
+    icon: LucideIcon;
+    color: string;
+    bg: string;
+  }[] = [
+    { label: "Cards studied", value: overall.cardsStudied, icon: Layers, color: "#3b82f6", bg: "#eff6ff" },
+    { label: "Study sessions", value: overall.studySessions, icon: Library, color: "#7c3aed", bg: "#f3e8ff" },
+    {
+      label: "Answers",
+      value: (
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+          {overall.correctAnswers}
+          <CircleCheckBig size={15} aria-hidden style={{ color: "#10b981" }} />
+          {overall.incorrectAnswers}
+          <CircleX size={15} aria-hidden style={{ color: "#f43f5e" }} />
+        </span>
+      ),
+      icon: Target,
+      color: "#10b981",
+      bg: "#ecfdf5",
+    },
+    {
+      label: "Accuracy",
+      value: overall.accuracy === null ? "—" : `${overall.accuracy}%`,
+      icon: Star,
+      color: "#f59e0b",
+      bg: "#fffbeb",
+    },
   ];
 
   return (
     <div className="animate-fade-in" style={{ padding: "20px 16px" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-        <h2 style={{ fontSize: 22, fontWeight: 800, margin: 0 }}>📊 Study Stats</h2>
+        <h2 style={{ fontSize: 22, fontWeight: 800, margin: 0, display: "inline-flex", alignItems: "center", gap: 8 }}>
+          <ChartColumn size={21} aria-hidden />
+          Study Stats
+        </h2>
         <button className="btn btn-ghost btn-sm" onClick={() => load()} style={{ padding: "6px 10px" }} aria-label="Refresh stats">
-          <Icons.Refresh />
+          <RefreshCw />
         </button>
       </div>
 
@@ -2186,7 +2261,13 @@ function StatsPage({ onOpenDeck }: { onOpenDeck: (id: number) => void }) {
           marginBottom: 14,
         }}
       >
-        <div style={{ fontSize: 42, lineHeight: 1 }}>{overall.streak > 0 ? "🔥" : "💤"}</div>
+        <div style={{ lineHeight: 1, flexShrink: 0 }}>
+          {overall.streak > 0 ? (
+            <Flame size={42} strokeWidth={1.5} aria-hidden />
+          ) : (
+            <Moon size={42} strokeWidth={1.5} aria-hidden />
+          )}
+        </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 26, fontWeight: 900, lineHeight: 1.1 }}>
             {overall.streak} day{overall.streak === 1 ? "" : "s"}
@@ -2207,8 +2288,9 @@ function StatsPage({ onOpenDeck }: { onOpenDeck: (id: number) => void }) {
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 22 }}>
         {overallTiles.map((t) => (
           <div key={t.label} className="glass-card" style={{ background: t.bg, borderRadius: 16, padding: "14px 12px" }}>
-            <div style={{ fontSize: 20, fontWeight: 800, color: t.color }}>
-              {t.icon} {t.value}
+            <div style={{ fontSize: 20, fontWeight: 800, color: t.color, display: "flex", alignItems: "center", gap: 7 }}>
+              <t.icon size={19} aria-hidden />
+              {t.value}
             </div>
             <div style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 600, marginTop: 2 }}>{t.label}</div>
           </div>
@@ -2216,10 +2298,15 @@ function StatsPage({ onOpenDeck }: { onOpenDeck: (id: number) => void }) {
       </div>
 
       {/* Per-deck progress */}
-      <h3 style={{ fontSize: 16, fontWeight: 800, margin: "0 0 12px" }}>📚 Deck progress</h3>
+      <h3 style={{ fontSize: 16, fontWeight: 800, margin: "0 0 12px", display: "flex", alignItems: "center", gap: 7 }}>
+        <Library size={17} aria-hidden />
+        Deck progress
+      </h3>
       {decks.length === 0 ? (
         <div className="glass-card" style={{ textAlign: "center", padding: "32px 20px", marginBottom: 22 }}>
-          <div style={{ fontSize: 44, marginBottom: 8 }}>📭</div>
+          <div style={{ marginBottom: 8, color: "var(--text-muted)" }}>
+            <Inbox size={44} strokeWidth={1.5} aria-hidden />
+          </div>
           <p style={{ margin: 0, fontWeight: 700, fontSize: 15 }}>No study sets yet</p>
           <p style={{ margin: "6px 0 0", fontSize: 13, color: "var(--text-muted)" }}>
             Create your first deck and your progress will show up here!
@@ -2238,7 +2325,9 @@ function StatsPage({ onOpenDeck }: { onOpenDeck: (id: number) => void }) {
                 onClick={() => onOpenDeck(deck.sessionId)}
               >
                 <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-                  <span style={{ fontSize: 20 }}>{typeIcon(deck.sourceType)}</span>
+                  <span style={{ color: "var(--accent-dark)", display: "flex", flexShrink: 0 }}>
+                    <SourceTypeIcon type={deck.sourceType} size={20} />
+                  </span>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <p style={{ margin: 0, fontWeight: 700, fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {deck.title}
@@ -2255,7 +2344,10 @@ function StatsPage({ onOpenDeck }: { onOpenDeck: (id: number) => void }) {
                   <div className="progress-fill" style={{ width: `${deck.mastery}%`, background: color }} />
                 </div>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap", fontSize: 12, color: "var(--text-muted)", fontWeight: 600 }}>
-                  <span>🃏 {deck.studiedCount}/{deck.cardCount} cards studied</span>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                    <Layers size={13} aria-hidden />
+                    {deck.studiedCount}/{deck.cardCount} cards studied
+                  </span>
                   <span>·</span>
                   <span style={{ color: "#10b981" }}>{deck.correctCount} correct</span>
                   <span style={{ color: "#f43f5e" }}>{incorrect} incorrect</span>
@@ -2280,7 +2372,7 @@ function StatsPage({ onOpenDeck }: { onOpenDeck: (id: number) => void }) {
               }}
             >
               <p style={{ margin: "0 0 8px", fontSize: 13, fontWeight: 700, color: "#1d4ed8" }}>
-                🌱 Not studied yet ({freshDecks.length})
+                <Sprout size={14} className="icon-inline" aria-hidden /> Not studied yet ({freshDecks.length})
               </p>
               {freshDecks.slice(0, 3).map((deck) => (
                 <div
@@ -2288,7 +2380,9 @@ function StatsPage({ onOpenDeck }: { onOpenDeck: (id: number) => void }) {
                   style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0", cursor: "pointer" }}
                   onClick={() => onOpenDeck(deck.sessionId)}
                 >
-                  <span style={{ fontSize: 16 }}>{typeIcon(deck.sourceType)}</span>
+                  <span style={{ color: "var(--accent-dark)", display: "flex", flexShrink: 0 }}>
+                    <SourceTypeIcon type={deck.sourceType} size={16} />
+                  </span>
                   <span style={{ flex: 1, minWidth: 0, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {deck.title}
                   </span>
@@ -2308,10 +2402,15 @@ function StatsPage({ onOpenDeck }: { onOpenDeck: (id: number) => void }) {
       )}
 
       {/* Recent activity */}
-      <h3 style={{ fontSize: 16, fontWeight: 800, margin: "0 0 12px" }}>🕑 Recent activity</h3>
+      <h3 style={{ fontSize: 16, fontWeight: 800, margin: "0 0 12px", display: "flex", alignItems: "center", gap: 7 }}>
+        <ClockArrowUp size={17} aria-hidden />
+        Recent activity
+      </h3>
       {recent.length === 0 ? (
         <div className="glass-card" style={{ textAlign: "center", padding: "28px 20px" }}>
-          <div style={{ fontSize: 40, marginBottom: 8 }}>🌱</div>
+          <div style={{ marginBottom: 8, color: "var(--text-muted)" }}>
+            <Sprout size={40} strokeWidth={1.5} aria-hidden />
+          </div>
           <p style={{ margin: 0, fontWeight: 700, fontSize: 14 }}>Nothing here yet</p>
           <p style={{ margin: "6px 0 0", fontSize: 13, color: "var(--text-muted)" }}>
             Answer cards in Study or Exam mode and your activity will appear here.
@@ -2330,13 +2429,19 @@ function StatsPage({ onOpenDeck }: { onOpenDeck: (id: number) => void }) {
                 borderBottom: "1px solid rgba(147,197,253,0.25)",
               }}
             >
-              <span style={{ fontSize: 17, flexShrink: 0 }}>{item.correct ? "✅" : "❌"}</span>
+              <span style={{ flexShrink: 0, display: "flex", color: item.correct ? "#10b981" : "#f43f5e" }}>
+                {item.correct ? (
+                  <CircleCheckBig size={17} aria-hidden />
+                ) : (
+                  <CircleX size={17} aria-hidden />
+                )}
+              </span>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <p style={{ margin: 0, fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {item.question}
                 </p>
                 <p style={{ margin: 0, fontSize: 11, color: "var(--text-muted)" }}>
-                  {item.deckTitle} · {item.mode === "exam" ? "📝 Exam" : "📖 Study"}
+                  {item.deckTitle} · {item.mode === "exam" ? "Exam" : "Study"}
                 </p>
               </div>
               <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600, flexShrink: 0 }}>
@@ -2384,38 +2489,45 @@ function HomePage({ onUpload, onSessions }: { onUpload: () => void; onSessions: 
           background: "rgba(255,255,255,0.08)",
           borderRadius: "50%",
         }} />
-        <div className="animate-heartbeat" style={{ fontSize: 48, marginBottom: 12 }}>💙</div>
+        <div className="animate-heartbeat" style={{ marginBottom: 12 }}>
+          <Heart size={48} strokeWidth={1.5} aria-hidden />
+        </div>
         <h1 style={{ margin: "0 0 6px", fontSize: 26, fontWeight: 900, lineHeight: 1.2 }}>
           QuizTime
         </h1>
         <p style={{ margin: "0 0 20px", fontSize: 14, opacity: 0.9, lineHeight: 1.5 }}>
-          Upload your study material and I&apos;ll make it into fun flashcards — then study them or take an exam! 🌟
+          Upload your study material and I&apos;ll make it into fun flashcards — then study them or take an exam!
         </p>
         <button
           className="btn"
           style={{ background: "white", color: "var(--accent-dark)", fontWeight: 800, fontSize: 15 }}
           onClick={onUpload}
         >
-          <Icons.Sparkle />
-          Start Studying ✨
+          <Sparkles />
+          Start Studying
         </button>
       </div>
 
       {/* Features */}
-      <h3 style={{ fontSize: 16, fontWeight: 800, margin: "0 0 14px" }}>How it works 💡</h3>
+      <h3 style={{ fontSize: 16, fontWeight: 800, margin: "0 0 14px", display: "flex", alignItems: "center", gap: 7 }}>
+        <Lightbulb size={17} aria-hidden />
+        How it works
+      </h3>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 24 }}>
         {[
-          { icon: "📄", title: "Upload PDF", desc: "Upload any PDF document" },
-          { icon: "📸", title: "Take Photo", desc: "Snap a photo of your notes" },
-          { icon: "📖", title: "Study Mode", desc: "Flip the card to reveal the answer" },
-          { icon: "📝", title: "Exam Mode", desc: "4 choices, instant score" },
+          { icon: FileText, title: "Upload PDF", desc: "Upload any PDF document" },
+          { icon: Camera, title: "Take Photo", desc: "Snap a photo of your notes" },
+          { icon: BookOpen, title: "Study Mode", desc: "Flip the card to reveal the answer" },
+          { icon: ClipboardCheck, title: "Exam Mode", desc: "4 choices, instant score" },
         ].map((f, i) => (
           <div
             key={i}
             className="glass-card animate-fade-in"
             style={{ padding: "16px 14px", animationDelay: `${i * 0.1}s` }}
           >
-            <div style={{ fontSize: 28, marginBottom: 8 }}>{f.icon}</div>
+            <div style={{ marginBottom: 8, color: "var(--accent-dark)" }}>
+              <f.icon size={28} strokeWidth={1.75} aria-hidden />
+            </div>
             <p style={{ margin: "0 0 4px", fontWeight: 700, fontSize: 14 }}>{f.title}</p>
             <p style={{ margin: 0, fontSize: 12, color: "var(--text-muted)" }}>{f.desc}</p>
           </div>
@@ -2430,7 +2542,10 @@ function HomePage({ onUpload, onSessions }: { onUpload: () => void; onSessions: 
         padding: "18px 16px",
         marginBottom: 16,
       }}>
-        <h3 style={{ margin: "0 0 10px", fontSize: 15, fontWeight: 800 }}>💖 Study Tips</h3>
+        <h3 style={{ margin: "0 0 10px", fontSize: 15, fontWeight: 800, display: "flex", alignItems: "center", gap: 7 }}>
+          <Heart size={16} aria-hidden />
+          Study Tips
+        </h3>
         {[
           "Review cards daily for best retention!",
           "Focus on 'Still Learning' cards more.",
@@ -2438,7 +2553,7 @@ function HomePage({ onUpload, onSessions }: { onUpload: () => void; onSessions: 
           "Explain answers in your own words.",
         ].map((tip, i) => (
           <div key={i} style={{ display: "flex", gap: 8, marginBottom: 6, fontSize: 13, color: "var(--text-muted)" }}>
-            <span>⭐</span>
+            <Star size={14} aria-hidden style={{ flexShrink: 0, marginTop: 2, color: "#f59e0b" }} />
             <span>{tip}</span>
           </div>
         ))}
@@ -2449,7 +2564,7 @@ function HomePage({ onUpload, onSessions }: { onUpload: () => void; onSessions: 
         style={{ width: "100%" }}
         onClick={onSessions}
       >
-        <Icons.Sessions />
+        <Library />
         View My Study Sets
       </button>
     </div>
@@ -2467,7 +2582,9 @@ function SetupPage() {
         padding: "24px 20px",
         marginBottom: 20,
       }}>
-        <div style={{ fontSize: 48, marginBottom: 12, textAlign: "center" }}>🔑</div>
+        <div style={{ marginBottom: 12, textAlign: "center", color: "#f59e0b" }}>
+          <KeyRound size={48} strokeWidth={1.5} aria-hidden />
+        </div>
         <h2 style={{ margin: "0 0 8px", fontSize: 20, fontWeight: 800, textAlign: "center" }}>
           Setup Required
         </h2>
@@ -2489,7 +2606,7 @@ function SetupPage() {
         </div>
       </div>
       <p style={{ fontSize: 13, color: "var(--text-muted)", textAlign: "center" }}>
-        The Gemini API has a generous free tier — no credit card needed! 💖
+        The Gemini API has a generous free tier — no credit card needed!
       </p>
     </div>
   );
@@ -2499,7 +2616,9 @@ function SetupPage() {
 function SignInPrompt({ feature }: { feature: string }) {
   return (
     <div className="animate-fade-in" style={{ padding: "48px 24px", textAlign: "center" }}>
-      <div style={{ fontSize: 56, marginBottom: 12 }}>🔐</div>
+      <div style={{ marginBottom: 12, color: "var(--accent-dark)" }}>
+        <Lock size={56} strokeWidth={1.5} aria-hidden />
+      </div>
       <h2 style={{ margin: "0 0 8px", fontSize: 20, fontWeight: 800 }}>Sign in to {feature}</h2>
       <p style={{ margin: "0 auto 24px", color: "var(--text-muted)", fontSize: 14, lineHeight: 1.6, maxWidth: 320 }}>
         Your study sets are saved to your account — so you can sync them
@@ -2692,7 +2811,7 @@ export default function App() {
   const discardDraft = () => {
     setDraft(null);
     persistDraft(null);
-    showToast("Draft discarded", "🗑️");
+    showToast("Draft discarded", Trash);
   };
 
   const handleSaveSession = async (title: string) => {
@@ -2728,7 +2847,7 @@ export default function App() {
       setDeckKey((k) => k + 1);
       setTab("quiz");
     } catch {
-      showToast("Failed to load session", "❌");
+      showToast("Failed to load session", CircleX);
     }
   };
 
@@ -2777,7 +2896,9 @@ export default function App() {
                 gap: 10,
               }}
             >
-              <span style={{ fontSize: 22 }}>💾</span>
+              <span style={{ color: "#92400e", display: "flex", flexShrink: 0 }}>
+                <Save size={22} aria-hidden />
+              </span>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <p style={{ margin: 0, fontSize: 13, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   Unsaved study set: {draft.title}
@@ -2795,7 +2916,7 @@ export default function App() {
                 style={{ flexShrink: 0, color: "#f43f5e", padding: "6px" }}
                 aria-label="Discard draft"
               >
-                <Icons.Delete />
+                <Trash />
               </button>
             </div>
           )}
@@ -2815,10 +2936,10 @@ export default function App() {
   };
 
   const navItems = [
-    { id: "home" as Tab, label: "Home", Icon: Icons.Home },
-    { id: "upload" as Tab, label: "Upload", Icon: Icons.Upload },
-    { id: "sessions" as Tab, label: "My Sets", Icon: Icons.Sessions },
-    { id: "stats" as Tab, label: "Stats", Icon: Icons.Stats },
+    { id: "home" as Tab, label: "Home", Icon: House },
+    { id: "upload" as Tab, label: "Upload", Icon: Upload },
+    { id: "sessions" as Tab, label: "My Sets", Icon: Library },
+    { id: "stats" as Tab, label: "Stats", Icon: ChartColumn },
   ];
 
   return (
@@ -2848,7 +2969,7 @@ export default function App() {
         <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
           {!hasApiKey && signedIn && (
             <span style={{ fontSize: 12, background: "#fef3c7", color: "#92400e", padding: "4px 10px", borderRadius: 999, fontWeight: 600 }}>
-              ⚙️ Setup
+              <Settings size={12} className="icon-inline" aria-hidden /> Setup
             </span>
           )}
           {user ? (
@@ -2923,6 +3044,8 @@ export default function App() {
           </button>
         ))}
       </nav>
+
+      <ToastHost />
     </div>
   );
 }
