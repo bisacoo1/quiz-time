@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { pool } from "@/db";
+import { isMaintenanceMode } from "@/lib/maintenance";
 
 // Ping the database so uptime checks catch DB outages too.
 // Must stay dynamic — never evaluate this at build time.
@@ -14,10 +15,13 @@ export async function GET() {
     database = false;
   }
 
+  const maintenance = isMaintenanceMode();
+
   return NextResponse.json(
     {
       status: database ? "ok" : "degraded",
       database,
+      maintenance,
       timestamp: new Date().toISOString(),
     },
     { status: database ? 200 : 503 }

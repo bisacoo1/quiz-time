@@ -252,6 +252,22 @@ body {
   transform: scale(1.01);
 }
 
+/* Maintenance banner (shown to signed-in users while MAINTENANCE_MODE is on) */
+.maintenance-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: linear-gradient(90deg, #f59e0b, #fbbf24);
+  color: #451a03;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+  text-align: center;
+  box-shadow: 0 2px 12px rgba(245, 158, 11, 0.35);
+}
+
 /* Badge */
 .badge {
   display: inline-flex;
