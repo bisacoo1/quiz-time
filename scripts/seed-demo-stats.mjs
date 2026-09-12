@@ -78,27 +78,31 @@ await answer(bio.sessionId, bio.cardIds[3], true, "study", 2);
 await answer(bio.sessionId, bio.cardIds[4], true, "exam", 3);
 await answer(hist.sessionId, hist.cardIds[3], false, "exam", 3);
 
-const token = await encode({
-  token: {
-    userId: USER_ID,
-    sub: USER_ID,
-    email: "demo@student.local",
-    name: "Demo Student",
-    iat: Math.floor(Date.now() / 1000),
-    exp: Math.floor(Date.now() / 1000) + 24 * 60 * 60,
-    jti: `demo-${Date.now()}`,
-  },
-  secret: AUTH_SECRET,
-  salt: "authjs.session-token",
-});
+const payload = {
+  userId: USER_ID,
+  sub: USER_ID,
+  email: "demo@student.local",
+  name: "Demo Student",
+  iat: Math.floor(Date.now() / 1000),
+  exp: Math.floor(Date.now() / 1000) + 24 * 60 * 60,
+  jti: `demo-${Date.now()}`,
+};
+
+// Auth.js derives BOTH the cookie name and the encryption salt from the
+// protocol the app server sees (plain http → "authjs.session-token";
+// https, incl. X-Forwarded-Proto: https from a proxy → the "__Secure-"
+// variant). We can't always know what the tunnel forwards, so mint both —
+// the browser sends both cookies and the server uses the one it expects.
+const [plainToken, secureToken] = await Promise.all([
+  encode({ token: payload, secret: AUTH_SECRET, salt: "authjs.session-token" }),
+  encode({ token: payload, secret: AUTH_SECRET, salt: "__Secure-authjs.session-token" }),
+]);
 
 await pool.end();
 
-const secure = BASE_URL.startsWith("https://");
-const cookieName = secure ? "__Secure-authjs.session-token" : "authjs.session-token";
-
 console.log(`Seeded demo user "${USER_ID}" (3 decks, 10 answers, 4-day streak).`);
 console.log(`\nPreview: ${BASE_URL}\n`);
-console.log("Paste into the browser console on the preview page, then reload:\n");
-console.log(`  document.cookie = "${cookieName}=${token}; path=/; ${secure ? "secure; " : ""}max-age=86400";`);
-console.log(`\n(Or send it as a header:  Cookie: ${cookieName}=${token.slice(0, 24)}…)`);
+console.log("Paste BOTH lines into the browser console on the preview page, then reload:\n");
+console.log(`  document.cookie = "authjs.session-token=${plainToken}; path=/; max-age=86400";`);
+console.log(`  document.cookie = "__Secure-authjs.session-token=${secureToken}; path=/; secure; max-age=86400";`);
+console.log("\n(One of the two will be ignored depending on how the proxy forwards the request.)");
