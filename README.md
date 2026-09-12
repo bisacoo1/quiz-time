@@ -109,6 +109,98 @@ openssl rand -base64 32   # → AUTH_SECRET
 - The Gemini-generating endpoint is also sign-in-only, and the rate limit is
   now bucketed per user.
 
+## Study Stats & Progress (P2)
+
+Every card answered in **Study mode** ("Got it / Still learning") and **Exam
+mode** (multiple choice) is recorded as one row in the `study_results` table:
+which deck, which card, right/wrong, which mode, and when. Results live in the
+database tied to the account — progress follows the user across devices
+(`localStorage` is only a small offline draft cache: answers recorded while a
+sync fails are retried on the next flush).
+
+The **Stats tab** (signed-in only) shows:
+
+- **Overall** — total cards studied, study sessions, correct/incorrect,
+  accuracy, and a 🔥 **daily streak** (consecutive days with at least one
+  answer; studying yesterday but not yet today keeps the streak alive).
+- **Per deck** — cards studied, correct/incorrect, mastery % (studied cards ÷
+  deck size), accuracy %, and last studied date. Decks that predate this
+  feature (or were never studied) render as friendly zeros, not errors.
+- **Recent activity** — the last answers with deck, question and mode.
+
+### API
+
+| Route | Purpose |
+| --- | --- |
+| `POST /api/stats/results` | Record outcomes: `{ results: [{ sessionId, cardId, correct, mode?, answeredAt? }] }` (max 100/batch). Deck **and** card ownership are verified per entry — entries pointing at another user's data are skipped and reported in `invalid`, never written. |
+| `GET /api/stats` | `{ overall, decks, recent }` for the signed-in user only. All counts are cast `::int` (pg returns `bigint` strings for `count(*)`). |
+
+> The per-card right/wrong history in `study_results` is the foundation the
+> planned spaced-repetition scheduler (P4) will consume.
+
+### Production migration (Supabase)
+
+Migration `drizzle/0002_study_results.sql` is idempotent. To apply it in
+production, paste this into the Supabase SQL editor and run it once:
+
+```sql
+CREATE TABLE IF NOT EXISTS "study_results" (
+  "id" serial PRIMARY KEY NOT NULL,
+  "user_id" text NOT NULL,
+  "session_id" integer NOT NULL,
+  "card_id" integer NOT NULL,
+  "correct" boolean NOT NULL,
+  "mode" text DEFAULT 'study' NOT NULL,
+  "answered_at" timestamp DEFAULT now() NOT NULL
+);
+
+DO $$
+BEGIN
+    ALTER TABLE "study_results" ADD CONSTRAINT "study_results_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$
+BEGIN
+    ALTER TABLE "study_results" ADD CONSTRAINT "study_results_session_id_study_sessions_id_fk" FOREIGN KEY ("session_id") REFERENCES "public"."study_sessions"("id") ON DELETE cascade ON UPDATE no action;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$
+BEGIN
+    ALTER TABLE "study_results" ADD CONSTRAINT "study_results_card_id_flashcards_id_fk" FOREIGN KEY ("card_id") REFERENCES "public"."flashcards"("id") ON DELETE cascade ON UPDATE no action;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+CREATE INDEX IF NOT EXISTS "study_results_user_id_idx" ON "study_results" USING btree ("user_id");
+CREATE INDEX IF NOT EXISTS "study_results_session_id_idx" ON "study_results" USING btree ("session_id");
+CREATE INDEX IF NOT EXISTS "study_results_card_id_idx" ON "study_results" USING btree ("card_id");
+CREATE INDEX IF NOT EXISTS "study_results_user_answered_idx" ON "study_results" USING btree ("user_id","answered_at");
+```
+
+It is safe to run twice, and safe on a database where the table already
+exists. Deleting a deck or an account cascades to its results.
+
+## E2E tests (offline-friendly)
+
+The sandbox/dev environment can't complete a real Google OAuth flow, so
+`scripts/auth-e2e.mjs` mints Auth.js session JWTs directly with
+`next-auth/jwt`'s `encode()` (salt `authjs.session-token`) and exercises the
+API over HTTP. It verifies, among other things, that **user A can neither
+read nor write user B's decks or study results**.
+
+```bash
+# 1. point DATABASE_URL/AUTH_SECRET at a test database (see .env.local)
+node scripts/setup-test-db.mjs          # creates db + applies all migrations (idempotent)
+npm run build && npm run start          # or: npm run dev
+# 2. in another shell (reuses a running server, or spawns its own):
+BASE_URL=http://127.0.0.1:3000 npm run test:e2e
+```
+
+`scripts/seed-demo-stats.mjs` seeds a demo user with decks + study history
+and prints a session cookie you can paste into the browser console to view
+the Stats tab in a preview environment where Google sign-in can't complete.
+
 ## Maintenance mode
 
 Set `MAINTENANCE_MODE=1` (also accepts `true`/`yes`/`on`) and restart the
@@ -149,6 +241,8 @@ npm run lint        # eslint
 npm run typecheck   # tsc --noEmit
 npm run db:generate # generate a new migration from src/db/schema.ts
 npm run db:migrate  # apply committed migrations to DATABASE_URL
+npm run db:setup-test # create/reset the local test db + apply migrations
+npm run test:e2e    # auth/stats e2e suite (minted JWTs, real HTTP)
 ```
 
 ## Notes

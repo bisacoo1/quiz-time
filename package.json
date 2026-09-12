@@ -8,7 +8,9 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate"
+    "db:migrate": "drizzle-kit migrate",
+    "db:setup-test": "node scripts/setup-test-db.mjs",
+    "test:e2e": "node scripts/auth-e2e.mjs"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",

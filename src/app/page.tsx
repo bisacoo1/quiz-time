@@ -28,8 +28,17 @@ interface StudySession {
   knownCount?: number;
 }
 
-type Tab = "home" | "upload" | "quiz" | "sessions";
+type Tab = "home" | "upload" | "quiz" | "sessions" | "stats";
 type QuizMode = "select" | "study" | "exam";
+
+/** One answered card, waiting to be (or already being) synced to the server. */
+interface StudyOutcome {
+  sessionId: number;
+  cardId: number;
+  correct: boolean;
+  mode: "study" | "exam";
+  answeredAt: string;
+}
 
 interface ExamQuestion {
   card: Flashcard;
@@ -265,6 +274,11 @@ const Icons = {
   Shuffle: () => (
     <svg viewBox="0 0 24 24" fill="currentColor">
       <path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z" />
+    </svg>
+  ),
+  Stats: () => (
+    <svg viewBox="0 0 24 24" fill="currentColor">
+      <path d="M5 9.2h3V19H5V9.2zM10.6 5h2.8v14h-2.8V5zm5.6 8H19v6h-2.8v-6z" />
     </svg>
   ),
 };
@@ -1453,7 +1467,69 @@ function QuizPage({
         return [...prev, { cardId, isKnown, attempts: 1 }];
       });
     }
+    // P2: also record the per-card right/wrong outcome for the Stats page
+    // (and later P4 spaced repetition). Unsaved decks have no server-side
+    // card ids yet, so they're skipped — outcomes start flowing once saved.
+    recordOutcome(cardId, isKnown, mode === "exam" ? "exam" : "study");
   };
+
+  // ── Study outcome sync (database-backed, localStorage as draft cache) ────
+  const outcomeQueue = useRef<StudyOutcome[]>([]);
+  const syncingOutcomes = useRef(false);
+
+  const flushOutcomes = useCallback(async (useBeacon = false) => {
+    if (outcomeQueue.current.length === 0 || syncingOutcomes.current) return;
+    const batch = outcomeQueue.current;
+    outcomeQueue.current = [];
+    if (useBeacon) {
+      writeOutcomeCache(await syncOutcomes(batch, true));
+      return;
+    }
+    syncingOutcomes.current = true;
+    try {
+      const leftover = await syncOutcomes(batch);
+      if (leftover.length > 0) {
+        // Failed (offline?) — keep them queued and cached for the next sync.
+        outcomeQueue.current = [...leftover, ...outcomeQueue.current].slice(-OUTCOME_CACHE_LIMIT);
+        writeOutcomeCache(outcomeQueue.current);
+      }
+    } finally {
+      syncingOutcomes.current = false;
+    }
+  }, []);
+
+  const recordOutcome = useCallback(
+    (cardId: number | undefined, correct: boolean, outcomeMode: "study" | "exam") => {
+      if (!sessionId || !cardId) return;
+      const outcome: StudyOutcome = {
+        sessionId,
+        cardId,
+        correct,
+        mode: outcomeMode,
+        answeredAt: new Date().toISOString(),
+      };
+      outcomeQueue.current = [...outcomeQueue.current, outcome].slice(-OUTCOME_CACHE_LIMIT);
+      writeOutcomeCache(outcomeQueue.current);
+      void flushOutcomes();
+    },
+    [sessionId, flushOutcomes]
+  );
+
+  // On mount: sync anything left over from a previous visit (e.g. answers
+  // recorded while offline). On unmount: best-effort beacon flush so a batch
+  // is not lost when the user navigates away mid-session.
+  useEffect(() => {
+    const cached = readOutcomeCache();
+    if (cached.length > 0) {
+      outcomeQueue.current = [...cached, ...outcomeQueue.current].slice(-OUTCOME_CACHE_LIMIT);
+      writeOutcomeCache(outcomeQueue.current);
+      void flushOutcomes();
+    }
+    return () => {
+      void flushOutcomes(true);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ── Study mode ────────────────────────────────────────────────────────────
   const handleKnow = async () => {
@@ -1952,6 +2028,328 @@ function SessionsPage({ onOpen }: { onOpen: (id: number) => void }) {
   );
 }
 
+// ─── Stats Page ───────────────────────────────────────────────────────────────
+interface DeckStat {
+  sessionId: number;
+  title: string;
+  sourceType: string;
+  cardCount: number;
+  studiedCount: number;
+  answerCount: number;
+  correctCount: number;
+  lastStudiedAt: string | null;
+  accuracy: number | null;
+  mastery: number;
+}
+
+interface ActivityItem {
+  id: number;
+  sessionId: number;
+  cardId: number;
+  correct: boolean;
+  mode: string;
+  answeredAt: string;
+  deckTitle: string;
+  question: string;
+}
+
+interface StatsData {
+  overall: {
+    totalAnswers: number;
+    correctAnswers: number;
+    incorrectAnswers: number;
+    cardsStudied: number;
+    studySessions: number;
+    streak: number;
+    accuracy: number | null;
+    lastStudiedAt: string | null;
+  };
+  decks: DeckStat[];
+  recent: ActivityItem[];
+}
+
+function statsDateLabel(iso: string | null): string {
+  if (!iso) return "—";
+  const date = new Date(iso);
+  const diff = Date.now() - date.getTime();
+  const hours = diff / 3600000;
+  if (hours < 1) return "Just now";
+  if (hours < 24) return `${Math.max(1, Math.floor(hours))}h ago`;
+  if (hours < 48) return "Yesterday";
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+function masteryColor(pct: number): string {
+  if (pct >= 80) return "#10b981";
+  if (pct >= 50) return "#f59e0b";
+  return "#6366f1";
+}
+
+function StatsPage({ onOpenDeck }: { onOpenDeck: (id: number) => void }) {
+  const [stats, setStats] = useState<StatsData | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async (signal?: AbortSignal) => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/stats", signal ? { signal } : undefined);
+      const data = await res.json();
+      if (signal?.aborted) return;
+      if (!res.ok) throw new Error(data.error || "Failed to load stats");
+      setStats(data as StatsData);
+    } catch {
+      if (signal?.aborted) return;
+      showToast("Failed to load stats", "❌");
+    } finally {
+      if (!signal?.aborted) setLoading(false);
+    }
+  }, []);
+
+  // Same aborted-IIFE pattern as SessionsPage: no synchronous setState in the
+  // effect body, and the request is cancelled if the tab unmounts.
+  useEffect(() => {
+    const controller = new AbortController();
+    void (async () => {
+      await load(controller.signal);
+    })();
+    return () => controller.abort();
+  }, [load]);
+
+  const typeIcon = (type: string) => {
+    if (type === "pdf") return "📄";
+    if (type === "image") return "🖼️";
+    if (type === "docx") return "📝";
+    if (type === "mixed") return "🗂️";
+    return "⌨️";
+  };
+
+  if (loading && !stats) {
+    return (
+      <div style={{ padding: "20px 16px" }}>
+        <h2 style={{ fontSize: 22, fontWeight: 800, margin: "0 0 16px" }}>📊 Study Stats</h2>
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="shimmer" style={{ height: i === 1 ? 120 : 80, borderRadius: 16 }} />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (!stats) {
+    return (
+      <div style={{ padding: "20px 16px", textAlign: "center" }}>
+        <h2 style={{ fontSize: 22, fontWeight: 800, margin: "0 0 16px" }}>📊 Study Stats</h2>
+        <div style={{ fontSize: 48, marginBottom: 10 }}>😴</div>
+        <p style={{ color: "var(--text-muted)", fontSize: 14, margin: "0 0 16px" }}>
+          Couldn&apos;t load your stats right now.
+        </p>
+        <button className="btn btn-secondary" onClick={() => load()}>
+          <Icons.Refresh />
+          Try again
+        </button>
+      </div>
+    );
+  }
+
+  const { overall, decks, recent } = stats;
+  const studiedDecks = decks.filter((d) => d.answerCount > 0);
+  const freshDecks = decks.filter((d) => d.answerCount === 0);
+
+  const overallTiles = [
+    { label: "Cards studied", value: `${overall.cardsStudied}`, icon: "🃏", color: "#3b82f6", bg: "#eff6ff" },
+    { label: "Study sessions", value: `${overall.studySessions}`, icon: "📚", color: "#7c3aed", bg: "#f3e8ff" },
+    { label: "Answers", value: `${overall.correctAnswers}✅ ${overall.incorrectAnswers}❌`, icon: "🎯", color: "#10b981", bg: "#ecfdf5" },
+    { label: "Accuracy", value: overall.accuracy === null ? "—" : `${overall.accuracy}%`, icon: "⭐", color: "#f59e0b", bg: "#fffbeb" },
+  ];
+
+  return (
+    <div className="animate-fade-in" style={{ padding: "20px 16px" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+        <h2 style={{ fontSize: 22, fontWeight: 800, margin: 0 }}>📊 Study Stats</h2>
+        <button className="btn btn-ghost btn-sm" onClick={() => load()} style={{ padding: "6px 10px" }} aria-label="Refresh stats">
+          <Icons.Refresh />
+        </button>
+      </div>
+
+      {/* Streak hero */}
+      <div
+        className="glass-card"
+        style={{
+          background: "linear-gradient(135deg, #1d4ed8, #7c3aed)",
+          color: "white",
+          borderRadius: 20,
+          padding: "18px 20px",
+          display: "flex",
+          alignItems: "center",
+          gap: 16,
+          marginBottom: 14,
+        }}
+      >
+        <div style={{ fontSize: 42, lineHeight: 1 }}>{overall.streak > 0 ? "🔥" : "💤"}</div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 26, fontWeight: 900, lineHeight: 1.1 }}>
+            {overall.streak} day{overall.streak === 1 ? "" : "s"}
+          </div>
+          <div style={{ fontSize: 13, opacity: 0.9, fontWeight: 600 }}>
+            {overall.streak === 0
+              ? "Study today to start a streak!"
+              : "study streak — keep it going!"}
+          </div>
+        </div>
+        <div style={{ textAlign: "right", fontSize: 12, opacity: 0.9 }}>
+          <div style={{ fontWeight: 700 }}>Last studied</div>
+          <div>{statsDateLabel(overall.lastStudiedAt)}</div>
+        </div>
+      </div>
+
+      {/* Overall tiles */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 22 }}>
+        {overallTiles.map((t) => (
+          <div key={t.label} className="glass-card" style={{ background: t.bg, borderRadius: 16, padding: "14px 12px" }}>
+            <div style={{ fontSize: 20, fontWeight: 800, color: t.color }}>
+              {t.icon} {t.value}
+            </div>
+            <div style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 600, marginTop: 2 }}>{t.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Per-deck progress */}
+      <h3 style={{ fontSize: 16, fontWeight: 800, margin: "0 0 12px" }}>📚 Deck progress</h3>
+      {decks.length === 0 ? (
+        <div className="glass-card" style={{ textAlign: "center", padding: "32px 20px", marginBottom: 22 }}>
+          <div style={{ fontSize: 44, marginBottom: 8 }}>📭</div>
+          <p style={{ margin: 0, fontWeight: 700, fontSize: 15 }}>No study sets yet</p>
+          <p style={{ margin: "6px 0 0", fontSize: 13, color: "var(--text-muted)" }}>
+            Create your first deck and your progress will show up here!
+          </p>
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 22 }}>
+          {studiedDecks.map((deck) => {
+            const color = masteryColor(deck.mastery);
+            const incorrect = deck.answerCount - deck.correctCount;
+            return (
+              <div
+                key={deck.sessionId}
+                className="glass-card"
+                style={{ padding: "14px 16px", cursor: "pointer" }}
+                onClick={() => onOpenDeck(deck.sessionId)}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+                  <span style={{ fontSize: 20 }}>{typeIcon(deck.sourceType)}</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ margin: 0, fontWeight: 700, fontSize: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {deck.title}
+                    </p>
+                    <p style={{ margin: 0, fontSize: 12, color: "var(--text-muted)" }}>
+                      Last studied {statsDateLabel(deck.lastStudiedAt)}
+                    </p>
+                  </div>
+                  <span className="badge" style={{ background: `${color}1a`, color, fontWeight: 800, flexShrink: 0 }}>
+                    {deck.mastery}% mastered
+                  </span>
+                </div>
+                <div className="progress-bar" style={{ marginBottom: 8 }}>
+                  <div className="progress-fill" style={{ width: `${deck.mastery}%`, background: color }} />
+                </div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", fontSize: 12, color: "var(--text-muted)", fontWeight: 600 }}>
+                  <span>🃏 {deck.studiedCount}/{deck.cardCount} cards studied</span>
+                  <span>·</span>
+                  <span style={{ color: "#10b981" }}>{deck.correctCount} correct</span>
+                  <span style={{ color: "#f43f5e" }}>{incorrect} incorrect</span>
+                  {deck.accuracy !== null && (
+                    <>
+                      <span>·</span>
+                      <span>{deck.accuracy}% accuracy</span>
+                    </>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+
+          {freshDecks.length > 0 && (
+            <div
+              className="glass-card"
+              style={{
+                padding: "14px 16px",
+                background: "linear-gradient(135deg, #eff6ff, #eef2ff)",
+                border: "1.5px dashed #bfdbfe",
+              }}
+            >
+              <p style={{ margin: "0 0 8px", fontSize: 13, fontWeight: 700, color: "#1d4ed8" }}>
+                🌱 Not studied yet ({freshDecks.length})
+              </p>
+              {freshDecks.slice(0, 3).map((deck) => (
+                <div
+                  key={deck.sessionId}
+                  style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0", cursor: "pointer" }}
+                  onClick={() => onOpenDeck(deck.sessionId)}
+                >
+                  <span style={{ fontSize: 16 }}>{typeIcon(deck.sourceType)}</span>
+                  <span style={{ flex: 1, minWidth: 0, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {deck.title}
+                  </span>
+                  <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600, flexShrink: 0 }}>
+                    {deck.cardCount} card{deck.cardCount === 1 ? "" : "s"} · 0% mastered
+                  </span>
+                </div>
+              ))}
+              {freshDecks.length > 3 && (
+                <p style={{ margin: "6px 0 0", fontSize: 12, color: "var(--text-muted)" }}>
+                  +{freshDecks.length - 3} more — open a deck and answer cards to see stats!
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Recent activity */}
+      <h3 style={{ fontSize: 16, fontWeight: 800, margin: "0 0 12px" }}>🕑 Recent activity</h3>
+      {recent.length === 0 ? (
+        <div className="glass-card" style={{ textAlign: "center", padding: "28px 20px" }}>
+          <div style={{ fontSize: 40, marginBottom: 8 }}>🌱</div>
+          <p style={{ margin: 0, fontWeight: 700, fontSize: 14 }}>Nothing here yet</p>
+          <p style={{ margin: "6px 0 0", fontSize: 13, color: "var(--text-muted)" }}>
+            Answer cards in Study or Exam mode and your activity will appear here.
+          </p>
+        </div>
+      ) : (
+        <div className="glass-card" style={{ padding: "6px 14px" }}>
+          {recent.slice(0, 12).map((item) => (
+            <div
+              key={item.id}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                padding: "9px 0",
+                borderBottom: "1px solid rgba(147,197,253,0.25)",
+              }}
+            >
+              <span style={{ fontSize: 17, flexShrink: 0 }}>{item.correct ? "✅" : "❌"}</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p style={{ margin: 0, fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {item.question}
+                </p>
+                <p style={{ margin: 0, fontSize: 11, color: "var(--text-muted)" }}>
+                  {item.deckTitle} · {item.mode === "exam" ? "📝 Exam" : "📖 Study"}
+                </p>
+              </div>
+              <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600, flexShrink: 0 }}>
+                {statsDateLabel(item.answeredAt)}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Home Page ────────────────────────────────────────────────────────────────
 function HomePage({ onUpload, onSessions }: { onUpload: () => void; onSessions: () => void }) {
   return (
@@ -2169,6 +2567,68 @@ function persistDraft(draft: PendingDeck | null) {
   }
 }
 
+// ─── Study outcome queue (P2 stats sync) ─────────────────────────────────────
+/**
+ * Card-level right/wrong outcomes live in the database (study_results), tied
+ * to the account — progress follows the user across devices. The queue below
+ * batches answers in memory and flushes them to POST /api/stats/results;
+ * localStorage is only a draft cache so outcomes survive a refresh or a
+ * failed request until the next successful sync.
+ */
+const OUTCOME_KEY = "quiztime:pending-outcomes";
+const OUTCOME_CACHE_LIMIT = 200;
+
+function readOutcomeCache(): StudyOutcome[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(OUTCOME_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? (parsed as StudyOutcome[]) : [];
+  } catch {
+    return []; // Corrupted cache — nothing we can do, drop it.
+  }
+}
+
+function writeOutcomeCache(outcomes: StudyOutcome[]) {
+  if (typeof window === "undefined") return;
+  try {
+    if (outcomes.length === 0) window.localStorage.removeItem(OUTCOME_KEY);
+    else window.localStorage.setItem(OUTCOME_KEY, JSON.stringify(outcomes.slice(-OUTCOME_CACHE_LIMIT)));
+  } catch {
+    // Storage full or blocked — non-fatal, the server copy is what counts.
+  }
+}
+
+/**
+ * Flush queued outcomes to the server. Outcomes recorded during this call are
+ * kept for the next flush; only what the server accepted is dropped.
+ * `useBeacon` switches to navigator.sendBeacon so the batch survives the
+ * page being hidden/closed mid-flight.
+ */
+async function syncOutcomes(outcomes: StudyOutcome[], useBeacon = false): Promise<StudyOutcome[]> {
+  if (outcomes.length === 0) return outcomes;
+  const body = JSON.stringify({ results: outcomes });
+  try {
+    if (useBeacon && typeof navigator !== "undefined" && navigator.sendBeacon) {
+      const sent = navigator.sendBeacon(
+        "/api/stats/results",
+        new Blob([body], { type: "application/json" })
+      );
+      // Beacon accepted for delivery → optimistically clear the cache.
+      return sent ? [] : outcomes;
+    }
+    const res = await fetch("/api/stats/results", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body,
+    });
+    return res.ok ? [] : outcomes;
+  } catch {
+    return outcomes; // Offline / network error — keep the cache, retry later.
+  }
+}
+
 // ─── Main App ─────────────────────────────────────────────────────────────────
 export default function App() {
   const [tab, setTab] = useState<Tab>("home");
@@ -2347,6 +2807,10 @@ export default function App() {
       if (!signedIn) return <SignInPrompt feature="see your study sets" />;
       return <SessionsPage onOpen={handleOpenSession} />;
     }
+    if (tab === "stats") {
+      if (!signedIn) return <SignInPrompt feature="see your study stats" />;
+      return <StatsPage onOpenDeck={handleOpenSession} />;
+    }
     return null;
   };
 
@@ -2354,6 +2818,7 @@ export default function App() {
     { id: "home" as Tab, label: "Home", Icon: Icons.Home },
     { id: "upload" as Tab, label: "Upload", Icon: Icons.Upload },
     { id: "sessions" as Tab, label: "My Sets", Icon: Icons.Sessions },
+    { id: "stats" as Tab, label: "Stats", Icon: Icons.Stats },
   ];
 
   return (
