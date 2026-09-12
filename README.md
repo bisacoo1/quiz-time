@@ -103,9 +103,9 @@ openssl rand -base64 32   # → AUTH_SECRET
   sign-in the profile is upserted into the `users` table and the user id is
   pinned into the session token.
 - `study_sessions.user_id` links every deck to its owner (`ON DELETE
-  CASCADE`). The column is nullable so the migration is safe on databases
-  created before accounts; decks created before sign-in existed are orphaned
-  (they belong to no account).
+  CASCADE`, `ON UPDATE CASCADE`). The column is nullable so the migration is
+  safe on databases created before accounts; decks created before sign-in
+  existed are orphaned (they belong to no account).
 - The Gemini-generating endpoint is also sign-in-only, and the rate limit is
   now bucketed per user.
 
@@ -180,6 +180,27 @@ CREATE INDEX IF NOT EXISTS "study_results_user_answered_idx" ON "study_results" 
 
 It is safe to run twice, and safe on a database where the table already
 exists. Deleting a deck or an account cascades to its results.
+
+Migration `drizzle/0003_cute_susan_delgado.sql` switches the two user FKs to
+`ON UPDATE cascade` so that when a sign-in re-keys a `users` row (same email
+arriving under a new Google `sub` — see "Accounts" in `src/auth.ts`), the
+user's decks and study results follow the id. It is idempotent too:
+
+```sql
+DO $$
+BEGIN
+    ALTER TABLE "study_sessions" DROP CONSTRAINT IF EXISTS "study_sessions_user_id_users_id_fk";
+    ALTER TABLE "study_sessions" ADD CONSTRAINT "study_sessions_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE cascade;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$
+BEGIN
+    ALTER TABLE "study_results" DROP CONSTRAINT IF EXISTS "study_results_user_id_users_id_fk";
+    ALTER TABLE "study_results" ADD CONSTRAINT "study_results_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE cascade;
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+```
 
 ## E2E tests (offline-friendly)
 

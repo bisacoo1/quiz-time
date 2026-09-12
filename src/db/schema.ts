@@ -32,8 +32,14 @@ export const studySessions = pgTable(
      * Owner of the deck. Nullable for now so the migration is safe on
      * databases created before accounts existed; flip to notNull() once
      * legacy decks are adopted or purged.
+     *
+     * ON UPDATE cascade: when a sign-in re-keys a user row (same email,
+     * new Google `sub` — see src/auth.ts), the decks follow automatically.
      */
-    userId: text("user_id").references(() => users.id, { onDelete: "cascade" }),
+    userId: text("user_id").references(() => users.id, {
+      onDelete: "cascade",
+      onUpdate: "cascade",
+    }),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => [
@@ -81,7 +87,10 @@ export const studyResults = pgTable(
   {
     id: serial("id").primaryKey(),
     /** Owner of the result — every read/write is scoped to this column. */
-    userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    userId: text("user_id").notNull().references(() => users.id, {
+      onDelete: "cascade",
+      onUpdate: "cascade",
+    }),
     /** Deck (study_sessions row) the answered card belongs to. */
     sessionId: integer("session_id").notNull().references(() => studySessions.id, { onDelete: "cascade" }),
     /** The flashcard that was answered. */
