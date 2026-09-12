@@ -1,6 +1,10 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 import { SessionProvider } from "next-auth/react";
+import { auth } from "@/auth";
+import { isMaintenanceMode } from "@/lib/maintenance";
+import { MaintenanceScreen } from "@/components/maintenance";
+import { MaintenanceBanner } from "@/components/maintenance-banner";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -20,14 +24,38 @@ export const viewport: Viewport = {
   themeColor: "#2563eb",
 };
 
-export default function RootLayout({ children }: { children: ReactNode }) {
+// MAINTENANCE_MODE is read from process.env per request (see
+// src/lib/maintenance.ts). Forcing the page tree to render dynamically keeps
+// Next from baking a build-time snapshot into prerendered HTML, so flipping
+// the toggle + restarting the server is enough — no rebuild needed.
+export const dynamic = "force-dynamic";
+
+export default async function RootLayout({ children }: { children: ReactNode }) {
+  const maintenance = isMaintenanceMode();
+  // Only touch the session (and its cookies) when maintenance is on:
+  // signed-out visitors get the maintenance page, signed-in owners get the
+  // normal app plus a banner.
+  const session = maintenance ? await auth() : null;
+  const signedIn = Boolean(session?.user?.id);
+
   return (
     <html lang="en">
       <head>
         <link rel="apple-touch-icon" href="/logo.png" />
       </head>
       <body>
-        <SessionProvider>{children}</SessionProvider>
+        <SessionProvider>
+          {maintenance && !signedIn ? (
+            <MaintenanceScreen />
+          ) : (
+            <>
+              {maintenance && signedIn && (
+                <MaintenanceBanner name={session?.user?.name} />
+              )}
+              {children}
+            </>
+          )}
+        </SessionProvider>
       </body>
     </html>
   );

@@ -49,6 +49,7 @@ npm run dev
 | `AUTH_SECRET` | for sign-in | Auth.js secret. Generate: `openssl rand -base64 32`. |
 | `AUTH_GOOGLE_ID` | for sign-in | Google OAuth client ID. |
 | `AUTH_GOOGLE_SECRET` | for sign-in | Google OAuth client secret. |
+| `MAINTENANCE_MODE` | no | `1`/`true`/`yes`/`on` enables [maintenance mode](#maintenance-mode): signed-out visitors get a maintenance page, signed-in users get a banner and keep full access. |
 
 > ⚠️ Never commit `.env`. It is listed in `.gitignore`; if it was ever pushed,
 > rotate the API key.
@@ -108,6 +109,21 @@ openssl rand -base64 32   # → AUTH_SECRET
 - The Gemini-generating endpoint is also sign-in-only, and the rate limit is
   now bucketed per user.
 
+## Maintenance mode
+
+Set `MAINTENANCE_MODE=1` (also accepts `true`/`yes`/`on`) and restart the
+server to put the site into maintenance:
+
+- **Signed-out visitors** get a server-rendered “We’ll be right back” page
+  instead of the app (with a sign-in button so you can still get in).
+- **Signed-in users** see the normal app with an amber banner explaining that
+  maintenance mode is on, and keep full access to their decks.
+- `GET /api/health` reports the current state in a `maintenance` field.
+
+The toggle is read from the environment **per request** and the page tree is
+forced dynamic, so turning it on/off only needs a restart — no rebuild. On
+Vercel, change the env var and redeploy/restart the functions.
+
 ## Deploying to Vercel
 
 1. Push the repo to GitHub and **Import Project** in Vercel (framework preset:
@@ -117,6 +133,7 @@ openssl rand -base64 32   # → AUTH_SECRET
    - `GEMINI_API_KEY`
    - `GEMINI_MODEL` (optional)
    - `AUTH_SECRET`, `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET` (see Accounts)
+   - `MAINTENANCE_MODE` (optional, see Maintenance mode)
 3. Create the tables: run `npm run db:migrate` once against that database
    (locally, with `DATABASE_URL` pointing at it).
 4. Deploy. If the build fails with `DATABASE_URL is required`, the variable
@@ -141,7 +158,8 @@ npm run db:migrate  # apply committed migrations to DATABASE_URL
   can burn your Gemini free tier.
 - `GET /api/config` tells the frontend whether `GEMINI_API_KEY` is set, so the
   app shows the setup screen instead of a broken upload form.
-- `GET /api/health` also pings the database (returns 503 when the DB is down).
+- `GET /api/health` also pings the database (returns 503 when the DB is down)
+  and reports whether maintenance mode is on.
 - Generated-but-unsaved decks are kept in `localStorage`; the Upload tab shows
   a banner to resume or discard them.
 
