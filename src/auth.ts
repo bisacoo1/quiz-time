@@ -84,6 +84,9 @@ export const authConfig = {
   // Auth.js v5 throws UntrustedHost and every auth() call — and therefore
   // every signed-in API route — fails with 401/500.
   trustHost: true,
+  pages: {
+    signIn: "/login",
+  },
   callbacks: {
     async jwt({ token, user }) {
       // `user` is only present on the first callback right after sign-in.

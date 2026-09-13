@@ -84,10 +84,12 @@ npm run db:migrate    # applies it
 
 ## Accounts & Sign-in with Google
 
-Decks are private to each account: the app requires sign-in for
-uploading, generating, studying and deleting study sets, and every query is
-scoped to the signed-in user (there is no anonymous data, so nobody can read
-or delete somebody else's decks by guessing an id).
+Visitors see a **login page first** (large QuizTime logo + Continue with
+Google). After sign-in they land in the app. Decks are private to each
+account: uploading, generating, studying and deleting study sets all require
+a session, and every query is scoped to the signed-in user (there is no
+anonymous data, so nobody can read or delete somebody else's decks by
+guessing an id).
 
 ### 1. Create the Google OAuth client
 
