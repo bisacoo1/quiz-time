@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, type ReactNode } from "react";
 import { useSession, signIn, signOut } from "next-auth/react";
+import { LoginPage } from "@/components/login-page";
 import {
   ArrowLeft,
   ArrowRight,
@@ -3679,7 +3680,7 @@ export default function App() {
   const [deckKey, setDeckKey] = useState(0);
 
   // Sign-in state (Auth.js). `data` is null while unauthenticated.
-  const { data: session } = useSession();
+  const { data: session, status } = useSession();
   const user = session?.user;
   const signedIn = Boolean(user?.id);
 
@@ -3766,6 +3767,12 @@ export default function App() {
       showToast("Failed to load session", CircleX);
     }
   };
+
+  // First-visit gate: unsigned visitors (and the session-loading splash)
+  // see the login page with the large logo — never the rest of the app.
+  if (status === "loading" || !signedIn) {
+    return <LoginPage loading={status === "loading"} />;
+  }
 
   const isViewingSession = activeSessionCards !== null && activeSessionId !== null && !pendingCards;
 
@@ -3922,7 +3929,7 @@ export default function App() {
               {/* Full reload on sign-out clears all in-memory deck state. */}
               <button
                 className="btn btn-ghost btn-sm"
-                onClick={() => void signOut({ callbackUrl: "/" })}
+                onClick={() => void signOut({ callbackUrl: "/login" })}
                 style={{ padding: "4px 8px", fontSize: 11, flexShrink: 0 }}
                 aria-label="Sign out"
               >
