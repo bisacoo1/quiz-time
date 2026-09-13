@@ -427,6 +427,14 @@ body {
   min-height: 100vh;
 }
 
+.app-footer {
+  padding: 4px 16px 20px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  text-align: center;
+}
+
 /* ── Mode picker ─────────────────────────────────────────────────────────── */
 .mode-card {
   width: 100%;

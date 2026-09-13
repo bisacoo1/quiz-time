@@ -3942,6 +3942,7 @@ export default function App() {
       {/* Page content */}
       <div className="page-content">
         {renderContent()}
+        <footer className="app-footer">Developed by: John Lloyd Ambrad</footer>
       </div>
 
       {/* Bottom nav */}
