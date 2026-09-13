@@ -37,7 +37,9 @@ IMPORTANT: Respond ONLY with valid JSON in this exact format:
       "difficulty": "easy|medium|hard"
     }
   ]
-}`;
+}
+
+For enumeration cards (rule 5), "answer" is the list of items joined with " ; ". For all other cards it is a single short answer.`;
 
 
 type GeminiPart = string | { inlineData: { mimeType: string; data: string } };

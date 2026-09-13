@@ -33,6 +33,7 @@ import {
   Layers,
   Library,
   Lightbulb,
+  ListOrdered,
   Lock,
   Moon,
   Orbit,
@@ -51,6 +52,7 @@ import {
   Trash,
   TriangleAlert,
   Trophy,
+  Type,
   Upload,
   X,
   type LucideIcon,
@@ -82,14 +84,16 @@ interface StudySession {
 }
 
 type Tab = "home" | "upload" | "quiz" | "sessions" | "stats";
-type QuizMode = "select" | "study" | "exam";
+type QuizMode = "select" | "study" | "exam" | "identify" | "enumerate";
+/** The three scored modes share one run state machine (questions, score, streak). */
+type ScoredMode = "exam" | "identify" | "enumerate";
 
 /** One answered card, waiting to be (or already being) synced to the server. */
 interface StudyOutcome {
   sessionId: number;
   cardId: number;
   correct: boolean;
-  mode: "study" | "exam";
+  mode: "study" | "exam" | "identify" | "enumerate";
   answeredAt: string;
 }
 
@@ -106,6 +110,21 @@ interface ExamAnswer {
   correctIndex: number;
   isCorrect: boolean;
   points: number;
+  /** Enumeration only: expected vs typed items, for the per-item review. */
+  expectedItems?: string[];
+  userItems?: string[];
+}
+
+interface IdentifySubmission {
+  typed: string;
+  isCorrect: boolean;
+}
+
+interface EnumSubmission {
+  userItems: string[];
+  hits: boolean[];
+  userHits: boolean[];
+  allCorrect: boolean;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -172,6 +191,154 @@ function gradeFor(pct: number): {
   if (pct >= 70) return { grade: "C", message: "Good effort — review and retry!", icon: BookOpen, color: "#6366f1" };
   if (pct >= 60) return { grade: "D", message: "Keep studying, you'll get there!", icon: Orbit, color: "#f59e0b" };
   return { grade: "F", message: "Don't give up — study mode can help!", icon: Library, color: "#f43f5e" };
+}
+
+// ─── Typed-answer checking (Identification & Enumeration) ────────────────────
+/**
+ * Normalize a typed answer for comparison: lowercase, strip punctuation,
+ * drop a leading article ("the mitochondria" == "mitochondria") and collapse
+ * whitespace — so small formatting differences never mark a right answer wrong.
+ */
+function normalizeTyped(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .replace(/^(the|a|an)\s+/, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** Classic edit distance — the typo tolerance underneath typedMatches(). */
+function levenshtein(a: string, b: string): number {
+  if (a === b) return 0;
+  if (a.length === 0) return b.length;
+  if (b.length === 0) return a.length;
+  let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    const curr = [i];
+    for (let j = 1; j <= b.length; j++) {
+      curr[j] = Math.min(
+        prev[j] + 1,
+        curr[j - 1] + 1,
+        prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)
+      );
+    }
+    prev = curr;
+  }
+  return prev[b.length];
+}
+
+/** Typo budget grows with answer length; tiny answers (symbols, numbers) must match exactly. */
+function typoBudget(len: number): number {
+  if (len <= 3) return 0;
+  if (len <= 5) return 1;
+  if (len <= 10) return 2;
+  return 3;
+}
+
+/** True when the typed text matches the expected answer (typo-tolerant). */
+function typedMatches(user: string, expected: string): boolean {
+  const u = normalizeTyped(user);
+  if (!u) return false;
+  const full = normalizeTyped(expected);
+  // A parenthetical aside ("Mitochondria (powerhouse of the cell)") should
+  // never be required typing — also accept the answer with asides removed.
+  // (Stripped before normalizing, since normalizing erases the parentheses.)
+  const noAsides = normalizeTyped(expected.replace(/\([^()]*\)/g, " "));
+  const variants = noAsides && noAsides !== full ? [full, noAsides] : [full];
+  return variants.some(
+    (v) => v.length > 0 && (u === v || levenshtein(u, v) <= typoBudget(Math.max(u.length, v.length)))
+  );
+}
+
+/**
+ * Alternative phrasings in an answer are separated with "/" ("Paris / City of
+ * Light") — typing any one of them counts. (";" is reserved for enumeration
+ * lists, so it is never treated as an alternative here.)
+ */
+function splitAlternatives(answer: string): string[] {
+  return answer
+    .split("/")
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+}
+
+/** True when the typed text matches any accepted phrasing of the answer. */
+function typedMatchesAny(user: string, answer: string): boolean {
+  return splitAlternatives(answer).some((alt) => typedMatches(user, alt));
+}
+
+// ─── Enumeration helpers ─────────────────────────────────────────────────────
+const ENUM_SPLIT_PATTERN = /[;\n]+/;
+const ENUM_ITEM_MAX_LEN = 50;
+const ENUM_ITEM_MAX_COUNT = 15;
+
+/** Remove a leading bullet/number ("1.", "-", "•") from one list item. */
+function cleanEnumItem(s: string): string {
+  return s.replace(/^\s*(?:\d{1,2}[.)]\s*|[•\-–—*]\s*)+/, "").trim();
+}
+
+/** Guards that keep prose answers from being mistaken for lists. */
+function acceptEnumItems(items: string[], strictPair: boolean): string[] | null {
+  const cleaned = items.map(cleanEnumItem).filter((s) => s.length > 0);
+  if (cleaned.length < 2 || cleaned.length > ENUM_ITEM_MAX_COUNT) return null;
+  if (cleaned.some((s) => s.length > ENUM_ITEM_MAX_LEN)) return null;
+  // A single ";" or line break often joins two prose clauses ("...; however ..."),
+  // so a 2-way split only counts as a list when the second item reads like one.
+  if (strictPair && cleaned.length === 2 && !/^[\p{Lu}\p{N}]/u.test(cleaned[1])) return null;
+  return cleaned;
+}
+
+/**
+ * Split an answer into enumeration items. The AI writes list answers with
+ * " ; " separators (see the scan prompt); numbered and bulleted lists are
+ * handled too so older decks keep working. Returns a single-item array when
+ * the answer is not a list.
+ */
+function getEnumItems(answer: string): string[] {
+  const bySeparator = acceptEnumItems(answer.split(ENUM_SPLIT_PATTERN), true);
+  if (bySeparator) return bySeparator;
+
+  if (answer.includes("•")) {
+    const byBullet = acceptEnumItems(answer.split("•"), false);
+    if (byBullet) return byBullet;
+  }
+
+  // Numbered lists ("1. Mango 2. Banana") — only when the text actually reads
+  // like a list, so "I have 2 apples" never becomes an enumeration.
+  if (/^\s*\d{1,2}[.)]/.test(answer) && /\s\d{1,2}[.)]\s/.test(answer)) {
+    const byNumber = acceptEnumItems(answer.split(/\s*\d{1,2}[.)]\s*/), false);
+    if (byNumber) return byNumber;
+  }
+
+  return [answer.trim()];
+}
+
+/** True when the card's answer is a list suited to Enumeration mode. */
+function isEnumCard(card: Flashcard): boolean {
+  return getEnumItems(card.answer).length >= 2;
+}
+
+/**
+ * Grade enumeration answers order-independently: each typed item claims the
+ * first still-unclaimed expected item it matches, so duplicates can't score
+ * twice and listing order never matters.
+ */
+function matchEnumItems(
+  userItems: string[],
+  expectedItems: string[]
+): { hits: boolean[]; userHits: boolean[] } {
+  const hits = expectedItems.map(() => false);
+  const userHits = userItems.map(() => false);
+  userItems.forEach((typed, i) => {
+    if (!typed.trim()) return;
+    const j = expectedItems.findIndex((exp, k) => !hits[k] && typedMatches(typed, exp));
+    if (j !== -1) {
+      hits[j] = true;
+      userHits[i] = true;
+    }
+  });
+  return { hits, userHits };
 }
 
 /**
@@ -1090,11 +1257,15 @@ function UploadPage({ onCardsReady }: { onCardsReady: (cards: Flashcard[], title
 // ─── Mode Select ─────────────────────────────────────────────────────────────
 function ModeSelect({
   cardCount,
+  cards,
   onSelect,
 }: {
   cardCount: number;
-  onSelect: (mode: "study" | "exam") => void;
+  cards: Flashcard[];
+  onSelect: (mode: "study" | "exam" | "identify" | "enumerate") => void;
 }) {
+  const enumerateCount = cards.filter(isEnumCard).length;
+  const identifyCount = cardCount - enumerateCount;
   return (
     <div className="animate-fade-in" style={{ padding: "4px 0" }}>
       <div style={{ textAlign: "center", marginBottom: 20 }}>
@@ -1143,10 +1314,50 @@ function ModeSelect({
             </div>
           </div>
         </button>
+
+        {/* Identification mode */}
+        <button className="mode-card" onClick={() => onSelect("identify")} disabled={identifyCount === 0}>
+          <div className="mode-icon" style={{ background: "linear-gradient(135deg, #10b981, #0d9488)" }}>
+            <Type />
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <p style={{ margin: "0 0 4px", fontSize: 16, fontWeight: 800 }}>Identification</p>
+            <p style={{ margin: "0 0 8px", fontSize: 13, color: "var(--text-muted)", lineHeight: 1.5 }}>
+              {identifyCount === 0
+                ? "Every card in this set is a list \u2014 nothing to identify here."
+                : `Type the answer from memory \u2014 ${identifyCount} question${identifyCount === 1 ? "" : "s"}, spelling-friendly checking.`}
+            </p>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {["Type to answer", "Typo-tolerant", "Scored"].map((t) => (
+                <span key={t} className="badge" style={{ background: "#ecfdf5", color: "#047857" }}>{t}</span>
+              ))}
+            </div>
+          </div>
+        </button>
+
+        {/* Enumeration mode */}
+        <button className="mode-card" onClick={() => onSelect("enumerate")} disabled={enumerateCount === 0}>
+          <div className="mode-icon" style={{ background: "linear-gradient(135deg, #f59e0b, #ea580c)" }}>
+            <ListOrdered />
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <p style={{ margin: "0 0 4px", fontSize: 16, fontWeight: 800 }}>Enumeration</p>
+            <p style={{ margin: "0 0 8px", fontSize: 13, color: "var(--text-muted)", lineHeight: 1.5 }}>
+              {enumerateCount === 0
+                ? "No list-style answers in this set \u2014 generate from material with lists to unlock this."
+                : `List every item from memory \u2014 ${enumerateCount} question${enumerateCount === 1 ? "" : "s"}, any order accepted.`}
+            </p>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {["List all items", "Any order", "Scored"].map((t) => (
+                <span key={t} className="badge" style={{ background: "#fffbeb", color: "#b45309" }}>{t}</span>
+              ))}
+            </div>
+          </div>
+        </button>
       </div>
 
       <p style={{ textAlign: "center", fontSize: 12, color: "var(--text-muted)", marginTop: 18 }}>
-        Tip: warm up in <strong>Study Mode</strong>, then test yourself in <strong>Exam Mode</strong>
+        Tip: warm up in <strong>Study Mode</strong>, then test yourself in <strong>Exam</strong>, <strong>Identification</strong> or <strong>Enumeration</strong>
       </p>
     </div>
   );
@@ -1310,7 +1521,424 @@ function ExamCard({
   );
 }
 
-// ─── Exam Mode: results screen ───────────────────────────────────────────────
+// ─── Identification Mode: type the answer ────────────────────────────────────
+function IdentifyCard({
+  card,
+  index,
+  total,
+  submitted,
+  earnedPoints,
+  onSubmit,
+  onNext,
+  isLast,
+}: {
+  card: Flashcard;
+  index: number;
+  total: number;
+  submitted: IdentifySubmission | null;
+  earnedPoints: number;
+  onSubmit: (typed: string, isCorrect: boolean) => void;
+  onNext: () => void;
+  isLast: boolean;
+}) {
+  const [value, setValue] = useState(submitted?.typed ?? "");
+  const [showHint, setShowHint] = useState(false);
+  const answered = submitted !== null;
+
+  const difficultyColor = {
+    easy: "#10b981",
+    medium: "#f59e0b",
+    hard: "#f43f5e",
+  }[card.difficulty] || "#6366f1";
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    // After answering, Enter advances instead of re-submitting.
+    if (answered) {
+      onNext();
+      return;
+    }
+    const typed = value.trim();
+    if (!typed) return;
+    onSubmit(typed, typedMatchesAny(typed, card.answer));
+  };
+
+  return (
+    <div className="animate-fade-in" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      {/* Progress */}
+      <div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6, fontSize: 13, color: "var(--text-muted)", fontWeight: 600 }}>
+          <span>Question {index + 1} of {total}</span>
+          <span className="badge" style={{ background: `${difficultyColor}20`, color: difficultyColor }}>
+            {card.difficulty}
+          </span>
+        </div>
+        <div className="progress-bar">
+          <div className="progress-fill" style={{ width: `${((index + 1) / total) * 100}%` }} />
+        </div>
+      </div>
+
+      {/* Question */}
+      <div
+        className="glass-card"
+        style={{
+          padding: 22,
+          borderLeft: "5px solid #10b981",
+          display: "flex",
+          flexDirection: "column",
+          justifyContent: "center",
+          minHeight: 130,
+        }}
+      >
+        <p style={{ margin: "0 0 8px", fontSize: 12, fontWeight: 700, letterSpacing: 0.4, color: "#047857", textTransform: "uppercase" }}>
+          Type the answer
+        </p>
+        <p style={{ margin: 0, fontSize: 18, fontWeight: 700, lineHeight: 1.45 }}>
+          {card.question}
+        </p>
+      </div>
+
+      {/* Answer input */}
+      <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        <input
+          className={`type-input${answered ? (submitted.isCorrect ? " correct" : " wrong") : ""}`}
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          disabled={answered}
+          placeholder="Type your answer here..."
+          autoComplete="off"
+          autoCorrect="off"
+          autoCapitalize="off"
+          spellCheck={false}
+          autoFocus
+          aria-label="Your answer"
+        />
+        {!answered && (
+          <button type="submit" className="btn btn-primary btn-lg" style={{ width: "100%" }} disabled={!value.trim()}>
+            <Check />
+            Check Answer
+          </button>
+        )}
+      </form>
+
+      {/* Hint */}
+      {card.hint && !answered && (
+        <button
+          type="button"
+          className="btn btn-ghost btn-sm"
+          onClick={() => setShowHint(!showHint)}
+          style={{ alignSelf: "center", color: "#f59e0b", gap: 6 }}
+        >
+          <Lightbulb />
+          {showHint ? "Hide hint" : "Show hint"}
+        </button>
+      )}
+      {showHint && card.hint && !answered && (
+        <div style={{
+          background: "#fffbeb",
+          border: "1px solid #fde68a",
+          borderRadius: 12,
+          padding: "10px 16px",
+          fontSize: 14,
+          color: "#92400e",
+          textAlign: "center",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 8,
+        }}>
+          <Lightbulb size={16} aria-hidden />
+          <span>{card.hint}</span>
+        </div>
+      )}
+
+      {/* Feedback */}
+      {answered && submitted && (
+        <>
+          <div className={`feedback ${submitted.isCorrect ? "feedback-correct" : "feedback-wrong"}`}>
+            {submitted.isCorrect ? (
+              <PartyPopper size={20} aria-hidden style={{ flexShrink: 0 }} />
+            ) : (
+              <FaceSlightlyFrowning size={20} aria-hidden style={{ flexShrink: 0 }} />
+            )}
+            <span>
+              <strong>{submitted.isCorrect ? "Correct!" : "Wrong!"}</strong>
+              {submitted.isCorrect
+                ? earnedPoints > 0
+                  ? ` +${earnedPoints} point${earnedPoints === 1 ? "" : "s"}`
+                  : ""
+                : ` The correct answer is: ${card.answer}`}
+            </span>
+          </div>
+
+          <button type="button" className="btn btn-primary btn-lg" style={{ width: "100%" }} onClick={onNext}>
+            {isLast ? "See Results" : "Next Question"}
+            {isLast ? <Flag /> : <ArrowRight />}
+          </button>
+        </>
+      )}
+
+      {!answered && (
+        <p style={{ textAlign: "center", fontSize: 12, color: "var(--text-muted)", margin: "2px 0 0" }}>
+          Tip: press <strong>Enter</strong> to check — small typos are forgiven
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ─── Enumeration Mode: list every item ───────────────────────────────────────
+function EnumerateCard({
+  card,
+  items,
+  index,
+  total,
+  submitted,
+  earnedPoints,
+  onSubmit,
+  onNext,
+  isLast,
+}: {
+  card: Flashcard;
+  items: string[];
+  index: number;
+  total: number;
+  submitted: EnumSubmission | null;
+  earnedPoints: number;
+  onSubmit: (userItems: string[], hits: boolean[], userHits: boolean[], allCorrect: boolean) => void;
+  onNext: () => void;
+  isLast: boolean;
+}) {
+  const [values, setValues] = useState<string[]>(
+    submitted?.userItems ?? new Array<string>(items.length).fill("")
+  );
+  const [showHint, setShowHint] = useState(false);
+  const answered = submitted !== null;
+  const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
+
+  const difficultyColor = {
+    easy: "#10b981",
+    medium: "#f59e0b",
+    hard: "#f43f5e",
+  }[card.difficulty] || "#6366f1";
+
+  const setValue = (i: number, v: string) =>
+    setValues((prev) => prev.map((p, j) => (j === i ? v : p)));
+
+  const handleSubmit = (e?: React.FormEvent) => {
+    e?.preventDefault();
+    // After answering, Enter advances instead of re-submitting.
+    if (answered) {
+      onNext();
+      return;
+    }
+    const cleaned = values.map((v) => v.trim());
+    if (cleaned.every((v) => !v)) return;
+    const { hits, userHits } = matchEnumItems(cleaned, items);
+    onSubmit(cleaned, hits, userHits, hits.every(Boolean));
+  };
+
+  const gotCount = submitted?.hits.filter(Boolean).length ?? 0;
+  const missing = items.filter((_, j) => submitted && !submitted.hits[j]);
+
+  return (
+    <div className="animate-fade-in" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      {/* Progress */}
+      <div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6, fontSize: 13, color: "var(--text-muted)", fontWeight: 600 }}>
+          <span>Question {index + 1} of {total}</span>
+          <span className="badge" style={{ background: `${difficultyColor}20`, color: difficultyColor }}>
+            {card.difficulty}
+          </span>
+        </div>
+        <div className="progress-bar">
+          <div className="progress-fill" style={{ width: `${((index + 1) / total) * 100}%` }} />
+        </div>
+      </div>
+
+      {/* Question */}
+      <div
+        className="glass-card"
+        style={{
+          padding: 22,
+          borderLeft: "5px solid #f59e0b",
+          display: "flex",
+          flexDirection: "column",
+          justifyContent: "center",
+          minHeight: 130,
+        }}
+      >
+        <p style={{ margin: "0 0 8px", fontSize: 12, fontWeight: 700, letterSpacing: 0.4, color: "#b45309", textTransform: "uppercase" }}>
+          List all {items.length} items — any order
+        </p>
+        <p style={{ margin: 0, fontSize: 18, fontWeight: 700, lineHeight: 1.45 }}>
+          {card.question}
+        </p>
+      </div>
+
+      {/* Item inputs */}
+      <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {items.map((_, i) => (
+          <div key={i} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <span className="choice-letter" style={{ background: "#fffbeb", color: "#b45309" }}>{i + 1}</span>
+            <input
+              ref={(el) => {
+                inputRefs.current[i] = el;
+              }}
+              className={`type-input${answered ? (submitted.userHits[i] ? " correct" : " wrong") : ""}`}
+              value={values[i] ?? ""}
+              onChange={(e) => setValue(i, e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  if (i < items.length - 1) inputRefs.current[i + 1]?.focus();
+                  else handleSubmit();
+                }
+              }}
+              disabled={answered}
+              placeholder={`Item ${i + 1}`}
+              autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="off"
+              spellCheck={false}
+              autoFocus={i === 0}
+              aria-label={`Item ${i + 1}`}
+            />
+          </div>
+        ))}
+        {!answered && (
+          <button type="submit" className="btn btn-primary btn-lg" style={{ width: "100%" }} disabled={values.every((v) => !v.trim())}>
+            <Check />
+            Check Answers
+          </button>
+        )}
+      </form>
+
+      {/* Hint */}
+      {card.hint && !answered && (
+        <button
+          type="button"
+          className="btn btn-ghost btn-sm"
+          onClick={() => setShowHint(!showHint)}
+          style={{ alignSelf: "center", color: "#f59e0b", gap: 6 }}
+        >
+          <Lightbulb />
+          {showHint ? "Hide hint" : "Show hint"}
+        </button>
+      )}
+      {showHint && card.hint && !answered && (
+        <div style={{
+          background: "#fffbeb",
+          border: "1px solid #fde68a",
+          borderRadius: 12,
+          padding: "10px 16px",
+          fontSize: 14,
+          color: "#92400e",
+          textAlign: "center",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 8,
+        }}>
+          <Lightbulb size={16} aria-hidden />
+          <span>{card.hint}</span>
+        </div>
+      )}
+
+      {/* Feedback */}
+      {answered && submitted && (
+        <>
+          <div className={`feedback ${submitted.allCorrect ? "feedback-correct" : "feedback-wrong"}`}>
+            {submitted.allCorrect ? (
+              <PartyPopper size={20} aria-hidden style={{ flexShrink: 0 }} />
+            ) : (
+              <FaceSlightlyFrowning size={20} aria-hidden style={{ flexShrink: 0 }} />
+            )}
+            <span>
+              <strong>{submitted.allCorrect ? "Perfect!" : `You got ${gotCount} of ${items.length}`}</strong>
+              {submitted.allCorrect
+                ? earnedPoints > 0
+                  ? ` +${earnedPoints} point${earnedPoints === 1 ? "" : "s"}`
+                  : ""
+                : missing.length > 0
+                  ? ` — missing: ${missing.join("; ")}`
+                  : ""}
+            </span>
+          </div>
+
+          <button type="button" className="btn btn-primary btn-lg" style={{ width: "100%" }} onClick={onNext}>
+            {isLast ? "See Results" : "Next Question"}
+            {isLast ? <Flag /> : <ArrowRight />}
+          </button>
+        </>
+      )}
+
+      {!answered && (
+        <p style={{ textAlign: "center", fontSize: 12, color: "var(--text-muted)", margin: "2px 0 0" }}>
+          Tip: <strong>Enter</strong> jumps to the next item — order doesn&apos;t matter
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ─── Empty scored run (the mode has no suitable cards) ───────────────────────
+function EmptyRun({
+  icon: Icon,
+  color,
+  title,
+  message,
+  onBackToModes,
+}: {
+  icon: LucideIcon;
+  color: string;
+  title: string;
+  message: string;
+  onBackToModes: () => void;
+}) {
+  return (
+    <div className="animate-fade-in" style={{ textAlign: "center", padding: "40px 20px" }}>
+      <div style={{ marginBottom: 12, color }}>
+        <Icon size={56} strokeWidth={1.5} aria-hidden />
+      </div>
+      <h3 style={{ fontSize: 18, fontWeight: 800, margin: "0 0 8px" }}>{title}</h3>
+      <p style={{ color: "var(--text-muted)", fontSize: 14, margin: "0 0 20px", lineHeight: 1.6 }}>{message}</p>
+      <button className="btn btn-secondary" onClick={onBackToModes}>
+        <ArrowLeft />
+        Back to Modes
+      </button>
+    </div>
+  );
+}
+
+// ─── Scored-mode results screen (exam / identification / enumeration) ────────
+// ─── Enumeration missed-review detail ────────────────────────────────────────
+function EnumMissedDetail({
+  expectedItems,
+  userItems,
+}: {
+  expectedItems: string[];
+  userItems: string[];
+}) {
+  const { hits } = matchEnumItems(userItems, expectedItems);
+  const got = expectedItems.filter((_, j) => hits[j]);
+  const missed = expectedItems.filter((_, j) => !hits[j]);
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      {got.length > 0 && (
+        <p style={{ margin: 0, fontSize: 13, display: "flex", gap: 6 }}>
+          <CircleCheckBig size={15} aria-hidden style={{ flexShrink: 0, marginTop: 2, color: "#10b981" }} />
+          <span style={{ color: "#065f46" }}>You got: {got.join("; ")}</span>
+        </p>
+      )}
+      <p style={{ margin: 0, fontSize: 13, display: "flex", gap: 6 }}>
+        <CircleX size={15} aria-hidden style={{ flexShrink: 0, marginTop: 2, color: "#f43f5e" }} />
+        <span style={{ color: "#9f1239" }}>Missing: {missed.join("; ")}</span>
+      </p>
+    </div>
+  );
+}
+
 function ExamSummary({
   answers,
   score,
@@ -1320,6 +1948,8 @@ function ExamSummary({
   onRetry,
   onStudyMissed,
   onBackToModes,
+  completeTitle = "Exam Complete!",
+  retryLabel = "Retake Exam (New Order)",
 }: {
   answers: ExamAnswer[];
   score: number;
@@ -1329,6 +1959,8 @@ function ExamSummary({
   onRetry: () => void;
   onStudyMissed: () => void;
   onBackToModes: () => void;
+  completeTitle?: string;
+  retryLabel?: string;
 }) {
   const total = answers.length;
   const correct = answers.filter((a) => a.isCorrect).length;
@@ -1420,14 +2052,20 @@ function ExamSummary({
                 <p style={{ margin: "0 0 8px", fontSize: 14, fontWeight: 700, lineHeight: 1.45 }}>
                   {a.card.question}
                 </p>
-                <p style={{ margin: "0 0 4px", fontSize: 13, display: "flex", gap: 6 }}>
-                  <CircleX size={15} aria-hidden style={{ flexShrink: 0, marginTop: 2, color: "#f43f5e" }} />
-                  <span style={{ color: "#9f1239" }}>Your answer: {a.chosenOption}</span>
-                </p>
-                <p style={{ margin: 0, fontSize: 13, display: "flex", gap: 6 }}>
-                  <CircleCheckBig size={15} aria-hidden style={{ flexShrink: 0, marginTop: 2, color: "#10b981" }} />
-                  <span style={{ color: "#065f46", fontWeight: 600 }}>{a.card.answer}</span>
-                </p>
+                {a.expectedItems && a.expectedItems.length > 0 ? (
+                  <EnumMissedDetail expectedItems={a.expectedItems} userItems={a.userItems ?? []} />
+                ) : (
+                  <>
+                    <p style={{ margin: "0 0 4px", fontSize: 13, display: "flex", gap: 6 }}>
+                      <CircleX size={15} aria-hidden style={{ flexShrink: 0, marginTop: 2, color: "#f43f5e" }} />
+                      <span style={{ color: "#9f1239" }}>Your answer: {a.chosenOption}</span>
+                    </p>
+                    <p style={{ margin: 0, fontSize: 13, display: "flex", gap: 6 }}>
+                      <CircleCheckBig size={15} aria-hidden style={{ flexShrink: 0, marginTop: 2, color: "#10b981" }} />
+                      <span style={{ color: "#065f46", fontWeight: 600 }}>{a.card.answer}</span>
+                    </p>
+                  </>
+                )}
               </div>
             ))}
           </div>
@@ -1514,7 +2152,11 @@ function QuizPage({
     ? progress.find((p) => p.cardId === currentCard.id)
     : undefined;
 
-  const updateProgress = async (cardId: number | undefined, isKnown: boolean) => {
+  const updateProgress = async (
+    cardId: number | undefined,
+    isKnown: boolean,
+    outcomeMode?: StudyOutcome["mode"]
+  ) => {
     if (sessionId && cardId) {
       fetch(`/api/sessions/${sessionId}`, {
         method: "PATCH",
@@ -1534,7 +2176,11 @@ function QuizPage({
     // P2: also record the per-card right/wrong outcome for the Stats page
     // (and later P4 spaced repetition). Unsaved decks have no server-side
     // card ids yet, so they're skipped — outcomes start flowing once saved.
-    recordOutcome(cardId, isKnown, mode === "exam" ? "exam" : "study");
+    recordOutcome(
+      cardId,
+      isKnown,
+      outcomeMode ?? (mode === "exam" || mode === "identify" || mode === "enumerate" ? mode : "study")
+    );
   };
 
   // ── Study outcome sync (database-backed, localStorage as draft cache) ────
@@ -1563,7 +2209,7 @@ function QuizPage({
   }, []);
 
   const recordOutcome = useCallback(
-    (cardId: number | undefined, correct: boolean, outcomeMode: "study" | "exam") => {
+    (cardId: number | undefined, correct: boolean, outcomeMode: StudyOutcome["mode"]) => {
       if (!sessionId || !cardId) return;
       const outcome: StudyOutcome = {
         sessionId,
@@ -1597,7 +2243,7 @@ function QuizPage({
 
   // ── Study mode ────────────────────────────────────────────────────────────
   const handleKnow = async () => {
-    await updateProgress(currentCard?.id, true);
+    await updateProgress(currentCard?.id, true, "study");
     if (currentIndex >= activeCards.length - 1) {
       setDone(true);
     } else {
@@ -1606,7 +2252,7 @@ function QuizPage({
   };
 
   const handleDontKnow = async () => {
-    await updateProgress(currentCard?.id, false);
+    await updateProgress(currentCard?.id, false, "study");
     if (currentIndex >= activeCards.length - 1) {
       setDone(true);
     } else {
@@ -1662,9 +2308,17 @@ function QuizPage({
     setDone(false);
   };
 
-  // ── Exam mode ─────────────────────────────────────────────────────────────
-  const startExam = (questionCards?: Flashcard[]) => {
-    const qs = buildExamQuestions(questionCards ?? cards);
+  // ── Scored modes (exam / identification / enumeration) ──────────────────────
+  /** Start a scored run — each mode only gets the cards that suit it. */
+  const startScoredRun = (kind: ScoredMode, questionCards?: Flashcard[]) => {
+    const pool = questionCards ?? cards;
+    const suited =
+      kind === "enumerate"
+        ? pool.filter(isEnumCard)
+        : kind === "identify"
+          ? pool.filter((c) => !isEnumCard(c))
+          : pool;
+    const qs = buildExamQuestions(suited);
     setExamQuestions(qs);
     setExamIndex(0);
     setAnswers([]);
@@ -1677,7 +2331,38 @@ function QuizPage({
     setExamDone(false);
     setStartedAt(Date.now());
     setElapsed(0);
-    setMode("exam");
+    setMode(kind);
+  };
+
+  /** Record one graded answer — shared by exam, identification and enumeration. */
+  const recordScoredAnswer = async (
+    card: Flashcard,
+    isCorrect: boolean,
+    chosenOption: string,
+    outcomeMode: StudyOutcome["mode"],
+    extras?: { chosenIndex?: number; correctIndex?: number; expectedItems?: string[]; userItems?: string[] }
+  ) => {
+    const newStreak = isCorrect ? streak + 1 : 0;
+    const streakBonus = isCorrect ? Math.min(streak * 2, 10) : 0;
+    const points = isCorrect ? pointsFor(card) + streakBonus : 0;
+
+    setAnswers((prev) => [
+      ...prev,
+      {
+        card,
+        chosenIndex: extras?.chosenIndex ?? -1,
+        chosenOption,
+        correctIndex: extras?.correctIndex ?? -1,
+        isCorrect,
+        points,
+        ...(extras?.expectedItems ? { expectedItems: extras.expectedItems } : {}),
+        ...(extras?.userItems ? { userItems: extras.userItems } : {}),
+      },
+    ]);
+    setScore((s) => s + points);
+    setStreak(newStreak);
+    setBestStreak((b) => Math.max(b, newStreak));
+    await updateProgress(card.id, isCorrect, outcomeMode);
   };
 
   const handleChoose = async (optionIndex: number) => {
@@ -1685,25 +2370,22 @@ function QuizPage({
     if (!q || answers.length > examIndex) return; // ignore clicks after answering
 
     const isCorrect = optionIndex === q.correctIndex;
-    const newStreak = isCorrect ? streak + 1 : 0;
-    const streakBonus = isCorrect ? Math.min(streak * 2, 10) : 0;
-    const points = isCorrect ? pointsFor(q.card) + streakBonus : 0;
+    await recordScoredAnswer(q.card, isCorrect, q.options[optionIndex], "exam", {
+      chosenIndex: optionIndex,
+      correctIndex: q.correctIndex,
+    });
+  };
 
-    setAnswers((prev) => [
-      ...prev,
-      {
-        card: q.card,
-        chosenIndex: optionIndex,
-        chosenOption: q.options[optionIndex],
-        correctIndex: q.correctIndex,
-        isCorrect,
-        points,
-      },
-    ]);
-    setScore((s) => s + points);
-    setStreak(newStreak);
-    setBestStreak((b) => Math.max(b, newStreak));
-    await updateProgress(q.card.id, isCorrect);
+  /** Typed answer from Identification or Enumeration mode. */
+  const handleTypedSubmit = async (
+    summary: string,
+    isCorrect: boolean,
+    outcomeMode: "identify" | "enumerate",
+    extras?: { expectedItems?: string[]; userItems?: string[] }
+  ) => {
+    const q = examQuestions[examIndex];
+    if (!q || answers.length > examIndex) return; // ignore submits after answering
+    await recordScoredAnswer(q.card, isCorrect, summary, outcomeMode, extras);
   };
 
   const handleExamNext = () => {
@@ -1725,7 +2407,7 @@ function QuizPage({
   };
 
   // ── Mode switching ────────────────────────────────────────────────────────
-  const switchMode = (m: "study" | "exam") => {
+  const switchMode = (m: "study" | ScoredMode) => {
     if (m === "study") {
       // Respect the shuffle / unknown-only toggles if they're on.
       setActiveCards(buildStudyDeck(shuffleStudy, unknownOnly));
@@ -1733,7 +2415,7 @@ function QuizPage({
       setDone(false);
       setMode("study");
     } else {
-      startExam();
+      startScoredRun(m);
     }
   };
 
@@ -1753,6 +2435,32 @@ function QuizPage({
 
   const examQuestion = examQuestions[examIndex];
   const lastAnswer = answers[answers.length - 1];
+  const earnedPoints =
+    lastAnswer && examQuestion && lastAnswer.card === examQuestion.card ? lastAnswer.points : 0;
+
+  // Submitted state for the typed modes, derived from the recorded answer so
+  // the cards stay consistent with the run (same pattern as ExamCard's `chosen`).
+  const currentAnswer = answers.length > examIndex ? answers[examIndex] : null;
+  const identifySubmitted: IdentifySubmission | null = currentAnswer
+    ? { typed: currentAnswer.chosenOption, isCorrect: currentAnswer.isCorrect }
+    : null;
+  const enumExpected = examQuestion ? getEnumItems(examQuestion.card.answer) : [];
+  const enumMatch =
+    currentAnswer && examQuestion
+      ? matchEnumItems(
+          currentAnswer.userItems ?? [],
+          currentAnswer.expectedItems ?? enumExpected
+        )
+      : null;
+  const enumSubmitted: EnumSubmission | null =
+    currentAnswer && enumMatch
+      ? {
+          userItems: currentAnswer.userItems ?? [],
+          hits: enumMatch.hits,
+          userHits: enumMatch.userHits,
+          allCorrect: currentAnswer.isCorrect,
+        }
+      : null;
 
   return (
     <div style={{ padding: "16px" }}>
@@ -1803,14 +2511,28 @@ function QuizPage({
               onClick={() => switchMode("study")}
             >
               <BookOpen />
-              Study Mode
+              Study
             </button>
             <button
               className={mode === "exam" ? "active" : ""}
               onClick={() => switchMode("exam")}
             >
               <ClipboardCheck />
-              Exam Mode
+              Exam
+            </button>
+            <button
+              className={mode === "identify" ? "active" : ""}
+              onClick={() => switchMode("identify")}
+            >
+              <Type />
+              Identify
+            </button>
+            <button
+              className={mode === "enumerate" ? "active" : ""}
+              onClick={() => switchMode("enumerate")}
+            >
+              <ListOrdered />
+              Enumerate
             </button>
           </div>
 
@@ -1858,7 +2580,7 @@ function QuizPage({
 
       {/* Content */}
       {mode === "select" && (
-        <ModeSelect cardCount={cards.length} onSelect={switchMode} />
+        <ModeSelect cardCount={cards.length} cards={cards} onSelect={switchMode} />
       )}
 
       {mode === "study" && !done && currentCard && (
@@ -1917,10 +2639,60 @@ function QuizPage({
           index={examIndex}
           total={examQuestions.length}
           chosen={answers.length > examIndex ? answers[examIndex].chosenIndex : null}
-          earnedPoints={lastAnswer && lastAnswer.card === examQuestion.card ? lastAnswer.points : 0}
+          earnedPoints={earnedPoints}
           onChoose={handleChoose}
           onNext={handleExamNext}
           isLast={examIndex === examQuestions.length - 1}
+        />
+      )}
+
+      {mode === "identify" && !examDone && examQuestion && (
+        <IdentifyCard
+          key={`identify-${examIndex}-${examQuestions.length}`}
+          card={examQuestion.card}
+          index={examIndex}
+          total={examQuestions.length}
+          submitted={identifySubmitted}
+          earnedPoints={earnedPoints}
+          onSubmit={(typed, isCorrect) => void handleTypedSubmit(typed, isCorrect, "identify")}
+          onNext={handleExamNext}
+          isLast={examIndex === examQuestions.length - 1}
+        />
+      )}
+
+      {mode === "enumerate" && !examDone && examQuestion && (
+        <EnumerateCard
+          key={`enumerate-${examIndex}-${examQuestions.length}`}
+          card={examQuestion.card}
+          items={enumExpected}
+          index={examIndex}
+          total={examQuestions.length}
+          submitted={enumSubmitted}
+          earnedPoints={earnedPoints}
+          onSubmit={(userItems, hits, userHits, allCorrect) =>
+            void handleTypedSubmit(
+              userItems.filter(Boolean).join("; ") || "(no answer)",
+              allCorrect,
+              "enumerate",
+              { expectedItems: enumExpected, userItems }
+            )
+          }
+          onNext={handleExamNext}
+          isLast={examIndex === examQuestions.length - 1}
+        />
+      )}
+
+      {(mode === "identify" || mode === "enumerate") && !examDone && examQuestions.length === 0 && (
+        <EmptyRun
+          icon={mode === "identify" ? Type : ListOrdered}
+          color={mode === "identify" ? "#059669" : "#d97706"}
+          title={mode === "identify" ? "Nothing to identify here" : "No enumeration questions here"}
+          message={
+            mode === "identify"
+              ? "Every card in this set has a list-style answer, so they all live in Enumeration mode. Try another mode!"
+              : "Enumeration needs answers that are lists. Generate a set from material with lists (types, steps, examples) — or try another mode!"
+          }
+          onBackToModes={() => setMode("select")}
         />
       )}
 
@@ -1931,7 +2703,37 @@ function QuizPage({
           maxScore={maxScore}
           bestStreak={bestStreak}
           elapsed={elapsed}
-          onRetry={() => startExam()}
+          onRetry={() => startScoredRun("exam")}
+          onStudyMissed={handleStudyMissed}
+          onBackToModes={() => setMode("select")}
+        />
+      )}
+
+      {mode === "identify" && examDone && (
+        <ExamSummary
+          answers={answers}
+          score={score}
+          maxScore={maxScore}
+          bestStreak={bestStreak}
+          elapsed={elapsed}
+          completeTitle="Identification Complete!"
+          retryLabel="Retry Identification"
+          onRetry={() => startScoredRun("identify")}
+          onStudyMissed={handleStudyMissed}
+          onBackToModes={() => setMode("select")}
+        />
+      )}
+
+      {mode === "enumerate" && examDone && (
+        <ExamSummary
+          answers={answers}
+          score={score}
+          maxScore={maxScore}
+          bestStreak={bestStreak}
+          elapsed={elapsed}
+          completeTitle="Enumeration Complete!"
+          retryLabel="Retry Enumeration"
+          onRetry={() => startScoredRun("enumerate")}
           onStudyMissed={handleStudyMissed}
           onBackToModes={() => setMode("select")}
         />
@@ -2151,6 +2953,17 @@ function statsDateLabel(iso: string | null): string {
   if (hours < 24) return `${Math.max(1, Math.floor(hours))}h ago`;
   if (hours < 48) return "Yesterday";
   return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+function modeLabel(mode: string): string {
+  return (
+    {
+      study: "Study",
+      exam: "Exam",
+      identify: "Identification",
+      enumerate: "Enumeration",
+    }[mode] ?? "Study"
+  );
 }
 
 function masteryColor(pct: number): string {
@@ -2440,7 +3253,7 @@ function StatsPage({ onOpenDeck }: { onOpenDeck: (id: number) => void }) {
           </div>
           <p style={{ margin: 0, fontWeight: 700, fontSize: 14 }}>Nothing here yet</p>
           <p style={{ margin: "6px 0 0", fontSize: 13, color: "var(--text-muted)" }}>
-            Answer cards in Study or Exam mode and your activity will appear here.
+            Answer cards in Study, Exam, Identification or Enumeration mode and your activity will appear here.
           </p>
         </div>
       ) : (
@@ -2468,7 +3281,7 @@ function StatsPage({ onOpenDeck }: { onOpenDeck: (id: number) => void }) {
                   {item.question}
                 </p>
                 <p style={{ margin: 0, fontSize: 11, color: "var(--text-muted)" }}>
-                  {item.deckTitle} · {item.mode === "exam" ? "Exam" : "Study"}
+                  {item.deckTitle} · {modeLabel(item.mode)}
                 </p>
               </div>
               <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600, flexShrink: 0 }}>
@@ -2523,7 +3336,7 @@ function HomePage({ onUpload, onSessions }: { onUpload: () => void; onSessions: 
           QuizTime
         </h1>
         <p style={{ margin: "0 0 20px", fontSize: 14, opacity: 0.9, lineHeight: 1.5 }}>
-          Upload your study material and I&apos;ll make it into fun flashcards — then study them or take an exam!
+          Upload your study material and I&apos;ll turn it into fun flashcards — then review them with Study, Exam, Identification or Enumeration mode!
         </p>
         <button
           className="btn"
@@ -2546,6 +3359,8 @@ function HomePage({ onUpload, onSessions }: { onUpload: () => void; onSessions: 
           { icon: Camera, title: "Take Photo", desc: "Snap a photo of your notes" },
           { icon: BookOpen, title: "Study Mode", desc: "Flip the card to reveal the answer" },
           { icon: ClipboardCheck, title: "Exam Mode", desc: "4 choices, instant score" },
+          { icon: Type, title: "Identification", desc: "Type the answer from memory" },
+          { icon: ListOrdered, title: "Enumeration", desc: "List every item from memory" },
         ].map((f, i) => (
           <div
             key={i}
@@ -2576,7 +3391,7 @@ function HomePage({ onUpload, onSessions }: { onUpload: () => void; onSessions: 
         {[
           "Review cards daily for best retention!",
           "Focus on 'Still Learning' cards more.",
-          "Study first, then take Exam Mode to test yourself.",
+          "Study first, then test yourself with Exam, Identification or Enumeration.",
           "Explain answers in your own words.",
         ].map((tip, i) => (
           <div key={i} style={{ display: "flex", gap: 8, marginBottom: 6, fontSize: 13, color: "var(--text-muted)" }}>
@@ -3076,4 +3891,3 @@ export default function App() {
     </div>
   );
 }
-

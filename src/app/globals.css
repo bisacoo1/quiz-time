@@ -555,6 +555,26 @@ body {
 .score-pill.streak { color: #ea580c; }
 .score-pill.streak-hot { color: #ea580c; animation: pulseRing 1.4s ease-out infinite; }
 
+/* ── Typed answers (Identification & Enumeration) ─────────────────────────── */
+.type-input {
+  width: 100%;
+  padding: 14px 16px;
+  border-radius: 14px;
+  border: 2px solid #dbeafe;
+  background: white;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 16px;
+  font-weight: 600;
+  outline: none;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+}
+.type-input::placeholder { color: #9db4d0; font-weight: 500; }
+.type-input:focus { border-color: var(--blue-dark); box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15); }
+.type-input:disabled { opacity: 1; }
+.type-input.correct { border-color: #10b981; background: #ecfdf5; }
+.type-input.wrong { border-color: #f43f5e; background: #fff1f2; animation: shake 0.4s ease; }
+
 /* Score ring on the exam summary */
 .score-ring {
   width: 150px;
