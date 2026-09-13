@@ -162,6 +162,50 @@ body {
   background-clip: text;
 }
 
+/* iOS Add to Home Screen helper */
+.ios-install-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: linear-gradient(135deg, #1d4ed8, #2563eb);
+  color: white;
+  font-size: 13px;
+  line-height: 1.25;
+  box-shadow: 0 3px 12px rgba(29, 78, 216, 0.24);
+}
+.ios-install-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.18);
+}
+.ios-install-banner strong,
+.ios-install-banner span { display: block; }
+.ios-install-banner strong { font-size: 14px; margin-bottom: 2px; }
+.ios-install-banner span { opacity: 0.92; }
+.ios-install-banner span svg { vertical-align: -2px; margin: 0 2px; }
+.ios-install-action {
+  flex-shrink: 0;
+  padding: 7px 12px;
+  color: #1d4ed8;
+  background: white;
+  font-size: 12px;
+}
+.ios-install-close {
+  display: flex;
+  padding: 5px;
+  border: 0;
+  border-radius: 50%;
+  color: white;
+  background: transparent;
+  cursor: pointer;
+}
+.ios-install-close:hover { background: rgba(255, 255, 255, 0.18); }
+
 /* Buttons */
 .btn {
   display: inline-flex;
