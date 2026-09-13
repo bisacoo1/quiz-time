@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { extractDocxText, isDocxFile } from "@/lib/docx";
+import { extractPptxText, isPptxFile } from "@/lib/pptx";
 import { isRateLimited } from "@/lib/rate-limit";
 import { requireUser } from "@/lib/auth-guard";
 
@@ -64,8 +65,10 @@ const MIME_BY_EXTENSION: Record<string, string> = {
   heif: "image/heif",
   pdf: "application/pdf",
 };
-const MAX_UPLOAD_MB = 15;
+const MAX_UPLOAD_MB = 50;
 const MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024;
+const MAX_TOTAL_MB = 50;
+const MAX_TOTAL_BYTES = MAX_TOTAL_MB * 1024 * 1024;
 const MAX_FILES = 8;
 const MAX_TEXT_CHARS = 100_000;
 
@@ -175,9 +178,9 @@ export async function POST(request: NextRequest) {
 
     if (files.length > 0) {
       const totalBytes = files.reduce((sum, f) => sum + f.size, 0);
-      if (totalBytes > MAX_UPLOAD_BYTES * files.length) {
+      if (totalBytes > MAX_TOTAL_BYTES) {
         return NextResponse.json(
-          { error: `Those files total ${(totalBytes / 1024 / 1024).toFixed(1)} MB. Please keep it under ${MAX_UPLOAD_MB * files.length} MB — remove a few or use screenshots.` },
+          { error: `Those files total ${(totalBytes / 1024 / 1024).toFixed(1)} MB. Please keep it under ${MAX_TOTAL_MB} MB — remove a few or use screenshots.` },
           { status: 413 }
         );
       }
@@ -214,10 +217,27 @@ export async function POST(request: NextRequest) {
           continue;
         }
 
+        // PowerPoint presentations: Gemini can't take .pptx inline either.
+        if (isPptxFile(file)) {
+          try {
+            const pptText = await extractPptxText(file);
+            parts.push(`--- PowerPoint presentation: ${file.name || "presentation"} ---\n${pptText}`);
+          } catch (pptError) {
+            const reason = pptError instanceof Error ? pptError.message : "";
+            return NextResponse.json(
+              {
+                error: reason || `Couldn't read "${file.name || "that PowerPoint file"}". If it's an old .ppt file, re-save it as .pptx (or export it to PDF) and try again.`,
+              },
+              { status: 400 }
+            );
+          }
+          continue;
+        }
+
         const mimeType = resolveMimeType(file);
         if (!mimeType) {
           return NextResponse.json(
-            { error: `Unsupported file type "${file.type || "unknown"}" for "${file.name || "a file"}". Upload a JPEG/PNG/WEBP photo, a screenshot, a PDF, or a Word (.docx) file.` },
+            { error: `Unsupported file type "${file.type || "unknown"}" for "${file.name || "a file"}". Upload a JPEG/PNG/WEBP photo, a screenshot, a PDF, a Word (.docx) file, or a PowerPoint (.pptx) file.` },
             { status: 400 }
           );
         }

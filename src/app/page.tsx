@@ -38,6 +38,7 @@ import {
   Orbit,
   PartyPopper,
   PenLine,
+  Presentation,
   RefreshCw,
   Save,
   Settings,
@@ -220,6 +221,8 @@ function SourceTypeIcon({ type, size }: { type: string; size: number }) {
       ? ImageIcon
       : type === "docx"
       ? PenLine
+      : type === "pptx"
+      ? Presentation
       : type === "mixed"
       ? Files
       : Keyboard;
@@ -590,12 +593,13 @@ function ReviewSummary({
 type PickedFile = {
   id: string;
   file: File;
-  kind: "PDF" | "Image" | "Word";
+  kind: "PDF" | "Image" | "Word" | "PowerPoint";
   previewUrl?: string;
 };
 
 const MAX_FILES = 8;
-const MAX_TOTAL_MB = 24;
+const MAX_TOTAL_MB = 50;
+const MAX_UPLOAD_MB = 50;
 
 function formatSize(bytes: number): string {
   return bytes >= 1024 * 1024
@@ -612,6 +616,16 @@ function isWordFile(file: File): boolean {
     file.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
     file.type === "application/msword" ||
     /\.docx?$/i.test(file.name || "")
+  );
+}
+
+function isPptxFile(file: File): boolean {
+  const ty = (file.type || "").toLowerCase();
+  return (
+    ty === "application/vnd.openxmlformats-officedocument.presentationml.presentation" ||
+    ty === "application/vnd.ms-powerpoint" ||
+    ty === "application/vnd.openxmlformats-officedocument.presentationml.slideshow" ||
+    /\.pptx?$/i.test(file.name || "")
   );
 }
 
@@ -654,7 +668,8 @@ function UploadPage({ onCardsReady }: { onCardsReady: (cards: Flashcard[], title
         const pdf = isPDFFile(file);
         const image = isImageFile(file);
         const word = isWordFile(file);
-        if (!pdf && !image && !word) {
+        const pptx = isPptxFile(file);
+        if (!pdf && !image && !word && !pptx) {
           rejected++;
           continue;
         }
@@ -664,7 +679,7 @@ function UploadPage({ onCardsReady }: { onCardsReady: (cards: Flashcard[], title
         accepted.push({
           id: `${file.name}-${file.size}-${Math.random().toString(36).slice(2, 8)}`,
           file,
-          kind: pdf ? "PDF" : word ? "Word" : "Image",
+          kind: pdf ? "PDF" : word ? "Word" : pptx ? "PowerPoint" : "Image",
           previewUrl: image ? URL.createObjectURL(file) : undefined,
         });
       }
@@ -673,7 +688,7 @@ function UploadPage({ onCardsReady }: { onCardsReady: (cards: Flashcard[], title
       const kept = accepted.slice(0, room);
 
       if (rejected > 0) {
-        setError("Only PDF, Word (.docx) or image files (JPG, PNG, WEBP) are supported.");
+        setError("Only PDF, Word (.docx), PowerPoint (.pptx) or image files (JPG, PNG, WEBP) are supported.");
       } else if (accepted.length > kept.length) {
         setError(`You can upload up to ${MAX_FILES} files at a time.`);
       } else {
@@ -728,7 +743,7 @@ function UploadPage({ onCardsReady }: { onCardsReady: (cards: Flashcard[], title
 
       if (mode === "file") {
         if (picked.length === 0) {
-          setError("Please add at least one PDF or photo");
+          setError("Please add at least one PDF, photo, Word or PowerPoint file");
           setLoading(false);
           return;
         }
@@ -739,6 +754,13 @@ function UploadPage({ onCardsReady }: { onCardsReady: (cards: Flashcard[], title
           setLoading(false);
           return;
         }
+        for (const item of picked) {
+          if (item.file.size > MAX_UPLOAD_MB * 1024 * 1024) {
+            setError(`"${item.file.name}" is ${formatSize(item.file.size)} — please use files under ${MAX_UPLOAD_MB} MB.`);
+            setLoading(false);
+            return;
+          }
+        }
 
         for (const item of picked) {
           const optimized = await compressImage(item.file);
@@ -747,6 +769,7 @@ function UploadPage({ onCardsReady }: { onCardsReady: (cards: Flashcard[], title
 
         const pdfs = picked.filter((item) => item.kind === "PDF").length;
         const words = picked.filter((item) => item.kind === "Word").length;
+        const pptxs = picked.filter((item) => item.kind === "PowerPoint").length;
         const images = picked.filter((item) => item.kind === "Image").length;
         sourceType =
           picked.length === 1
@@ -754,6 +777,8 @@ function UploadPage({ onCardsReady }: { onCardsReady: (cards: Flashcard[], title
               ? "pdf"
               : words === 1
               ? "docx"
+              : pptxs === 1
+              ? "pptx"
               : "image"
             : images === picked.length
             ? "image"
@@ -792,7 +817,7 @@ function UploadPage({ onCardsReady }: { onCardsReady: (cards: Flashcard[], title
         </span>
       </h2>
       <p style={{ color: "var(--text-muted)", margin: "0 0 20px", fontSize: 14 }}>
-        Upload PDFs, Word docs or photos — you can select several at once — or paste text!
+        Upload PDFs, Word docs, PowerPoints or photos — you can select several at once — or paste text!
       </p>
 
       {/* Mode toggle */}
@@ -841,7 +866,7 @@ function UploadPage({ onCardsReady }: { onCardsReady: (cards: Flashcard[], title
             <input
               ref={fileRef}
               type="file"
-              accept=".pdf,.doc,.docx,image/*"
+              accept=".pdf,.doc,.docx,.ppt,.pptx,image/*"
               multiple
               style={{ display: "none" }}
               onChange={handleFileChange}
@@ -859,7 +884,7 @@ function UploadPage({ onCardsReady }: { onCardsReady: (cards: Flashcard[], title
             <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0 }}>
               {picked.length
                 ? `${picked.length} of ${MAX_FILES} added · ${formatSize(totalBytes)}`
-                : `PDF, Word, JPG, PNG, WEBP · up to ${MAX_FILES} files`}
+                : `PDF, Word, PowerPoint, JPG, PNG, WEBP · up to ${MAX_FILES} files`}
             </p>
           </div>
 
@@ -906,6 +931,8 @@ function UploadPage({ onCardsReady }: { onCardsReady: (cards: Flashcard[], title
                       <div style={{ color: "var(--accent-dark)" }}>
                         {item.kind === "Word" ? (
                           <PenLine size={34} strokeWidth={1.5} aria-hidden />
+                        ) : item.kind === "PowerPoint" ? (
+                          <Presentation size={34} strokeWidth={1.5} aria-hidden />
                         ) : (
                           <FileText size={34} strokeWidth={1.5} aria-hidden />
                         )}
@@ -967,7 +994,7 @@ function UploadPage({ onCardsReady }: { onCardsReady: (cards: Flashcard[], title
               className="btn btn-secondary"
               onClick={() => {
                 if (fileRef.current) {
-                  fileRef.current.accept = ".pdf,.doc,.docx,image/*";
+                  fileRef.current.accept = ".pdf,.doc,.docx,.ppt,.pptx,image/*";
                   fileRef.current.removeAttribute("capture");
                   fileRef.current.click();
                 }
