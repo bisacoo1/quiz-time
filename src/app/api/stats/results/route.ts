@@ -5,14 +5,15 @@ import { and, eq, inArray } from "drizzle-orm";
 import { requireUser } from "@/lib/auth-guard";
 
 const MAX_BATCH = 100;
-const VALID_MODES = ["study", "exam"];
+const VALID_MODES = ["study", "exam", "identify", "enumerate"];
 
 /**
  * POST /api/stats/results — record card-level study outcomes.
  *
- * Every answered card (Study mode "Got it / Still learning" and Exam mode
- * multiple choice) produces one row: which deck, which card, right/wrong,
- * when. This per-card signal is what P4's spaced repetition will consume,
+ * Every answered card (Study mode self-check, Exam mode multiple choice,
+ * Identification typing and Enumeration listing) produces one row: which
+ * deck, which card, right/wrong, when. This per-card signal is what P4's
+ * spaced repetition will consume,
  * so it is stored durably server-side, scoped to the signed-in user.
  *
  * Body: { results: [{ sessionId, cardId, correct, mode?, answeredAt? }] }

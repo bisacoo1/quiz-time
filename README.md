@@ -1,13 +1,21 @@
 # QuizTime – Flashcard Quiz Maker
 
 Upload PDFs, Word documents, photos (several at once), or pasted text and
-QuizTime turns them into flashcards, then lets you review them two ways:
+QuizTime turns them into flashcards, then lets you review them four ways:
 
 - **Study Mode** – traditional flashcards: read the question, tap to flip the
   card and reveal the answer, with optional hints and self-checking.
 - **Exam Mode** – multiple choice: 4 options per question, instant
   Correct / Wrong feedback, and a scoring system (points, accuracy, letter
   grade, streaks).
+- **Identification** – type the answer from memory. Checking is
+  spelling-friendly (case, punctuation and small typos are forgiven, and any
+  `/`-separated alternative phrasing counts), with the same scoring as Exam
+  Mode.
+- **Enumeration** – list every item from memory in any order. Cards whose
+  answer is a list (the AI writes these as items separated by ` ; `, e.g.
+  "Mango ; Banana ; Orange") become "name them all" questions with per-item
+  feedback.
 
 ## Uploading
 

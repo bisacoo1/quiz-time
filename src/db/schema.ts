@@ -97,7 +97,7 @@ export const studyResults = pgTable(
     cardId: integer("card_id").notNull().references(() => flashcards.id, { onDelete: "cascade" }),
     /** Right/wrong signal — the foundation P4's spaced repetition consumes. */
     correct: boolean("correct").notNull(),
-    /** Which mode produced the outcome: 'study' (self-check) or 'exam' (MCQ). */
+    /** Which mode produced the outcome: 'study' (self-check), 'exam' (MCQ), 'identify' (typed answer) or 'enumerate' (listed items). */
     mode: text("mode").notNull().default("study"),
     answeredAt: timestamp("answered_at").defaultNow().notNull(),
   },
