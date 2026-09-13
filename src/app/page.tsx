@@ -3882,6 +3882,7 @@ export default function App() {
             QuizTime
           </h1>
           <p style={{ margin: 0, fontSize: 11, color: "var(--text-muted)" }}>Your AI Study Partner</p>
+          <p className="app-developer">Developed by: John Lloyd Ambrad</p>
         </div>
         <div style={{ marginLeft: "auto", display: "flex", gap: 8, alignItems: "center" }}>
           {!hasApiKey && signedIn && (

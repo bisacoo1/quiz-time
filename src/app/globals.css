@@ -427,6 +427,14 @@ body {
   min-height: 100vh;
 }
 
+.app-developer {
+  margin: 1px 0 0;
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
 /* ── Mode picker ─────────────────────────────────────────────────────────── */
 .mode-card {
   width: 100%;
