@@ -43,6 +43,7 @@ import {
   RefreshCw,
   Save,
   Settings,
+  Share,
   Shuffle,
   Sparkles,
   Sprout,
@@ -3591,6 +3592,79 @@ async function syncOutcomes(outcomes: StudyOutcome[], useBeacon = false): Promis
 }
 
 // ─── Main App ─────────────────────────────────────────────────────────────────
+function IOSInstallPrompt() {
+  const [visible, setVisible] = useState(false);
+  const [installEvent, setInstallEvent] = useState<Event | null>(null);
+  const [isAndroid, setIsAndroid] = useState(false);
+
+  useEffect(() => {
+    // iOS Safari does not support beforeinstallprompt, so it needs manual
+    // Add to Home Screen instructions. Android Chrome can offer a native
+    // install dialog through this event.
+    const standalone = window.matchMedia("(display-mode: standalone)").matches ||
+      ("standalone" in navigator && Boolean((navigator as Navigator & { standalone?: boolean }).standalone));
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+      (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+    const android = /Android/i.test(navigator.userAgent);
+    const dismissed = window.localStorage.getItem("quiztime-install-dismissed");
+
+    setIsAndroid(android);
+    if (!standalone && !dismissed && isIOS) setVisible(true);
+
+    const handleBeforeInstall = (event: Event) => {
+      event.preventDefault();
+      setInstallEvent(event);
+      if (!standalone && !dismissed && android) setVisible(true);
+    };
+    window.addEventListener("beforeinstallprompt", handleBeforeInstall);
+    return () => window.removeEventListener("beforeinstallprompt", handleBeforeInstall);
+  }, []);
+
+  if (!visible) return null;
+
+  const install = async () => {
+    if (installEvent && "prompt" in installEvent) {
+      await (installEvent as Event & { prompt: () => Promise<void> }).prompt();
+      setVisible(false);
+    } else {
+      window.localStorage.setItem("quiztime-install-dismissed", "1");
+      setVisible(false);
+    }
+  };
+
+  return (
+    <div className="ios-install-banner" role="status">
+      <div className="ios-install-icon" aria-hidden><Share size={20} /></div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <strong>Install QuizTime</strong>
+        {isAndroid && installEvent ? (
+          <span>Add QuizTime to your home screen for quick access</span>
+        ) : isAndroid ? (
+          <span>Tap <strong>⋮</strong>, then “Add to Home screen”</span>
+        ) : (
+          <span>Tap <Share size={14} aria-hidden /> Share, then “Add to Home Screen”</span>
+        )}
+      </div>
+      {isAndroid && installEvent && (
+        <button type="button" className="btn btn-sm ios-install-action" onClick={() => void install()}>
+          Install
+        </button>
+      )}
+      <button
+        type="button"
+        className="ios-install-close"
+        aria-label="Dismiss install instructions"
+        onClick={() => {
+          window.localStorage.setItem("quiztime-install-dismissed", "1");
+          setVisible(false);
+        }}
+      >
+        <X size={18} />
+      </button>
+    </div>
+  );
+}
+
 export default function App() {
   const [tab, setTab] = useState<Tab>("home");
   const [pendingCards, setPendingCards] = useState<Flashcard[] | null>(null);
@@ -3786,6 +3860,7 @@ export default function App() {
 
   return (
     <div style={{ maxWidth: 520, margin: "0 auto", position: "relative" }}>
+      <IOSInstallPrompt />
       {/* Top bar */}
       <div style={{
         position: "sticky",
