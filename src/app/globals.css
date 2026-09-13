@@ -427,12 +427,12 @@ body {
   min-height: 100vh;
 }
 
-.app-footer {
-  padding: 4px 16px 20px;
+.app-developer {
+  margin: 1px 0 0;
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 600;
-  text-align: center;
+  line-height: 1.2;
 }
 
 /* ── Mode picker ─────────────────────────────────────────────────────────── */
