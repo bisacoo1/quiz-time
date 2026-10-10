@@ -6713,7 +6713,7 @@ function HomePage({
   const [howOpen, setHowOpen] = useState(false);
   const offlineReady = offlineDeckCount > 0;
   return (
-    <div className="section-stack" style={{ padding: "20px 16px 24px" }}>
+    <div className="section-stack home-content">
       {/* Hero — dark card, from the mockup */}
       <div style={{ background: "#1a1a1d", borderRadius: 20, padding: 22, color: "white", boxShadow: "0 10px 26px -14px rgba(26,26,29,0.55)" }}>
         <div className="meta-label" style={{ color: "#b9b9c2", marginBottom: 10, display: "flex", alignItems: "center", gap: 7, fontSize: 12 }}>
@@ -8101,7 +8101,7 @@ export default function App() {
       </div>
 
       {/* Bottom nav */}
-      <nav className="nav-bottom">
+      <nav className="nav-bottom" aria-label="Main navigation">
         {navItems.map(({ id, label, Icon, badge }) => (
           <button
             key={id}
