@@ -1437,7 +1437,7 @@ function UploadPage({
   const photos = picked.filter((item) => item.kind === "Image").length;
 
   return (
-    <div className="animate-fade-in" style={{ padding: "20px 16px" }}>
+    <div className="animate-fade-in upload-page" style={{ padding: "20px 16px" }}>
       <h2 style={{ fontSize: 22, fontWeight: 800, margin: "0 0 4px" }}>
         <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
           <Upload size={20} aria-hidden />
@@ -1665,7 +1665,7 @@ function UploadPage({
       ) : (
         <div style={{ marginBottom: 16 }}>
           <textarea
-            className="clay-textarea"
+            className="clay-textarea upload-textarea"
             value={textInput}
             onChange={(e) => setTextInput(e.target.value)}
             placeholder="Paste your notes, book excerpt, or any study text here... The AI will turn it into flashcards!"
