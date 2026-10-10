@@ -1464,6 +1464,115 @@ h1, h2, h3 {
   line-height: 1.4;
 }
 
+.home-content {
+  padding: 20px 16px 24px;
+}
+
+@media (min-width: 1024px) {
+  body {
+    padding: 24px 32px;
+  }
+
+  .app-shell {
+    width: 100%;
+    max-width: 1440px;
+    min-height: calc(100vh - 48px);
+    min-height: calc(100dvh - 48px);
+    display: grid;
+    grid-template-columns: 224px minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-areas:
+      "header header"
+      "nav content";
+    overflow: visible;
+  }
+
+  .topbar {
+    grid-area: header;
+    padding: 16px 30px;
+  }
+
+  .nav-bottom {
+    grid-area: nav;
+    position: sticky;
+    top: 16px;
+    bottom: auto;
+    left: auto;
+    width: auto;
+    max-width: none;
+    height: fit-content;
+    min-height: 100%;
+    transform: none;
+    align-self: stretch;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    padding: 24px 14px;
+    border: 0;
+    border-right: 1px solid var(--border);
+    border-radius: 0;
+    background: #FFFFFF;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    z-index: 10;
+  }
+
+  .nav-item {
+    flex: none;
+    width: 100%;
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: 12px;
+    padding: 12px 14px;
+    font-size: 13px;
+    text-align: left;
+  }
+
+  .nav-badge {
+    position: static;
+    transform: none;
+    margin-left: auto;
+  }
+
+  .page-content {
+    grid-area: content;
+    min-height: 0;
+    padding: 28px clamp(28px, 4vw, 64px) 48px;
+  }
+
+  .home-content {
+    width: 100%;
+    max-width: 920px;
+    margin: 0 auto;
+    padding: 8px 0 24px;
+  }
+
+  .login-screen {
+    width: min(100%, 1120px);
+    min-height: min(760px, calc(100dvh - 80px));
+    margin: auto;
+    padding: clamp(40px, 6vw, 80px);
+    display: grid;
+    grid-template-columns: minmax(0, 1.1fr) minmax(340px, 0.9fr);
+    align-items: center;
+    gap: clamp(40px, 7vw, 96px);
+    border: 1px solid rgba(23, 23, 23, 0.06);
+    border-radius: var(--radius-2xl);
+    box-shadow: var(--shadow-app);
+  }
+
+  .login-logo {
+    width: min(100%, 480px);
+    justify-self: center;
+  }
+
+  .login-panel {
+    width: 100%;
+    max-width: 420px;
+    justify-self: center;
+  }
+}
+
 .login-error {
   margin: 0 0 14px;
   padding: 10px 12px;
