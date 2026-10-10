@@ -1541,9 +1541,10 @@ h1, h2, h3 {
   .page-content {
     grid-area: content;
     width: 100%;
-    max-width: none;
+    max-width: 1240px;
+    margin-inline: auto;
     min-height: 0;
-    padding: 32px clamp(32px, 4vw, 72px) 48px;
+    padding: 32px clamp(28px, 3vw, 48px) 48px;
   }
 
   .home-content {
