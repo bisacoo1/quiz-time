@@ -1475,7 +1475,7 @@ h1, h2, h3 {
 
   .app-shell {
     width: 100%;
-    max-width: 1440px;
+    max-width: 1280px;
     min-height: calc(100vh - 48px);
     min-height: calc(100dvh - 48px);
     display: grid;
@@ -1536,8 +1536,11 @@ h1, h2, h3 {
 
   .page-content {
     grid-area: content;
+    width: 100%;
+    max-width: 1040px;
+    justify-self: center;
     min-height: 0;
-    padding: 28px clamp(28px, 4vw, 64px) 48px;
+    padding: 28px clamp(24px, 3vw, 40px) 48px;
   }
 
   .home-content {
