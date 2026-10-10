@@ -1541,17 +1541,43 @@ h1, h2, h3 {
   .page-content {
     grid-area: content;
     width: 100%;
-    max-width: 1240px;
+    max-width: none;
     margin-inline: auto;
     min-height: 0;
-    padding: 32px clamp(28px, 3vw, 48px) 48px;
+    padding: 36px clamp(36px, 4vw, 88px) 56px;
+    font-size: 17px;
   }
 
   .home-content {
     width: 100%;
-    max-width: 1120px;
+    max-width: 1440px;
     margin: 0 auto;
-    padding: 8px 0 24px;
+    padding: 12px 0 32px;
+  }
+
+  .upload-page {
+    width: 100%;
+    max-width: 1480px;
+    margin-inline: auto;
+    padding: 24px 0 !important;
+  }
+
+  .upload-page .upload-zone {
+    min-height: 300px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+
+  .upload-page .upload-textarea {
+    min-height: clamp(300px, 42vh, 560px) !important;
+    padding: 22px !important;
+    font-size: 16px !important;
+  }
+
+  .upload-page .btn-lg {
+    min-height: 56px;
+    font-size: 16px;
   }
 
   .login-screen {
