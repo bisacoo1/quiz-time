@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { isOwnerEmail } from "@/lib/owner";
+import { isMaintenanceAccessAllowed, isMaintenanceMode } from "@/lib/maintenance";
 
 export interface AuthedUser {
   id: string;
@@ -24,6 +25,12 @@ export type RequireUserResult =
 export async function requireUser(): Promise<RequireUserResult> {
   const session = await auth();
   if (session?.user?.id) {
+    if (isMaintenanceMode() && !isMaintenanceAccessAllowed(session.user.email)) {
+      return NextResponse.json(
+        { error: "QuizTime is in maintenance mode. Only the maintenance owner can use the app right now." },
+        { status: 503 }
+      );
+    }
     return {
       user: {
         id: session.user.id,

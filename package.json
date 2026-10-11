@@ -15,6 +15,7 @@
     "test:scan": "tsx --experimental-test-module-mocks scripts/scan-fallback.test.mjs",
     "test:srs": "tsx --test scripts/srs.test.mjs",
     "test:notifications": "tsx --test scripts/notifications.test.mjs",
+    "test:maintenance": "tsx --test scripts/maintenance.test.mjs",
     "test:reminders-e2e": "node scripts/reminders-e2e.mjs",
     "test:offline": "tsx --test scripts/offline.test.mjs scripts/offline-client.test.mjs",
     "test:presence": "tsx --test scripts/presence.test.mjs",

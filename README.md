@@ -905,9 +905,14 @@ Set `MAINTENANCE_MODE=1` (also accepts `true`/`yes`/`on`) and restart the
 server to put the site into maintenance:
 
 - **Signed-out visitors** get a server-rendered “We’ll be right back” page
-  instead of the app (with a sign-in button so you can still get in).
-- **Signed-in users** see the normal app with an amber banner explaining that
-  maintenance mode is on, and keep full access to their decks.
+  instead of the app. Only `ambrad_johnlloyd@fbc.ph.education` can sign in;
+  other Google accounts are rejected before a session is created.
+- **Existing non-owner sessions** are also denied app access, including
+  protected API requests. The maintenance owner sees the normal app with an
+  amber banner. Set `OWNER_EMAIL` to the same address to enable owner-only
+  features such as the online roster.
+- The banner is fixed across the top so it does not interfere with the
+  responsive desktop app layout.
 - `GET /api/health` reports the current state in a `maintenance` field.
 
 The toggle is read from the environment **per request** and the page tree is

@@ -11,8 +11,8 @@ export function MaintenanceBanner({ name }: { name?: string | null }) {
       <Wrench size={18} aria-hidden style={{ flexShrink: 0 }} />
       <span>
         <strong>Maintenance mode is on.</strong>{" "}
-        {firstName ? `${firstName}, you` : "You"} are signed in, so you keep
-        full access — everyone else sees a maintenance page.
+        {firstName ? `${firstName}, you have` : "You have"} owner access; other
+        accounts are blocked.
       </span>
     </div>
   );
