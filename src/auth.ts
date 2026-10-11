@@ -5,6 +5,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { users, type User } from "@/db/schema";
 import { isOwnerEmail } from "@/lib/owner";
+import { isMaintenanceAccessAllowed } from "@/lib/maintenance";
 
 /**
  * Auth.js (v5) — Google OAuth with JWT sessions.
@@ -150,6 +151,11 @@ export const authConfig = {
     signIn: "/login",
   },
   callbacks: {
+    async signIn({ user }) {
+      // Auth.js calls this before issuing a session or saving the account.
+      // Existing sessions are checked separately by the app and API guards.
+      return isMaintenanceAccessAllowed(user.email);
+    },
     async redirect({ url, baseUrl }) {
       // Behind proxies the Host header can be an internal address (0.0.0.0,
       // tunnel ids, …), while the browser sits on the public preview origin.

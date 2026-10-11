@@ -9,7 +9,13 @@ import { Wrench } from "lucide-react";
  * the sign-in button needs the client-side next-auth helper so owners can
  * still get in while the site is in maintenance.
  */
-export function MaintenanceScreen() {
+export function MaintenanceScreen({
+  hasSession = false,
+  ownerEmail,
+}: {
+  hasSession?: boolean;
+  ownerEmail: string;
+}) {
   return (
     <main
       style={{
@@ -42,15 +48,24 @@ export function MaintenanceScreen() {
           QuizTime is down for maintenance right now. Your decks and progress
           are safe — please check back a little later.
         </p>
-        <p style={{ color: "var(--text-muted)", fontSize: 13, margin: "0 0 24px" }}>
-          Owner? Sign in to keep using the site while maintenance is on.
+        <p style={{ color: "var(--text-muted)", fontSize: 13, lineHeight: 1.5, margin: "0 0 12px" }}>
+          Only {ownerEmail} can sign in while maintenance is on.
+        </p>
+        <p style={{ color: "var(--text-muted)", fontSize: 12, margin: "0 0 20px" }}>
+          Choose this Google account to continue.
         </p>
         <button
           className="btn btn-primary btn-lg"
           style={{ width: "100%" }}
-          onClick={() => void signIn("google", { callbackUrl: window.location.href })}
+          onClick={() =>
+            void signIn(
+              "google",
+              { callbackUrl: window.location.pathname },
+              { prompt: "select_account" }
+            )
+          }
         >
-          Sign in with Google
+          {hasSession ? "Switch Google account" : "Sign in with Google"}
         </button>
       </div>
     </main>
