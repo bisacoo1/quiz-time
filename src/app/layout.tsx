@@ -5,7 +5,6 @@ import { auth } from "@/auth";
 import {
   isMaintenanceAccessAllowed,
   isMaintenanceMode,
-  MAINTENANCE_OWNER_EMAIL,
 } from "@/lib/maintenance";
 import { MaintenanceScreen } from "@/components/maintenance";
 import { MaintenanceBanner } from "@/components/maintenance-banner";
@@ -62,10 +61,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
         <RegisterServiceWorker />
         <SessionProvider>
           {maintenance && !hasMaintenanceAccess ? (
-            <MaintenanceScreen
-              hasSession={Boolean(session?.user?.id)}
-              ownerEmail={MAINTENANCE_OWNER_EMAIL}
-            />
+            <MaintenanceScreen hasSession={Boolean(session?.user?.id)} />
           ) : (
             <>
               {maintenance && hasMaintenanceAccess && (
