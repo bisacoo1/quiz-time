@@ -1470,15 +1470,16 @@ h1, h2, h3 {
 
 @media (min-width: 1024px) {
   body {
-    padding: 0;
+    padding: 16px;
     font-size: 16px;
   }
 
   .app-shell {
     width: 100%;
-    max-width: none;
-    min-height: 100vh;
-    min-height: 100dvh;
+    max-width: 1200px;
+    min-height: calc(100vh - 32px);
+    min-height: calc(100dvh - 32px);
+    margin-inline: auto;
     display: grid;
     grid-template-columns: 224px minmax(0, 1fr);
     grid-template-rows: auto minmax(0, 1fr);
@@ -1486,9 +1487,9 @@ h1, h2, h3 {
       "header header"
       "nav content";
     overflow: visible;
-    border: 0;
-    border-radius: 0;
-    box-shadow: none;
+    border: 1px solid rgba(23, 23, 23, 0.07);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-app);
   }
 
   .topbar {
@@ -1541,7 +1542,7 @@ h1, h2, h3 {
   .page-content {
     grid-area: content;
     width: 100%;
-    max-width: 1360px;
+    max-width: 1040px;
     margin-inline: auto;
     min-height: 0;
     padding: 32px clamp(24px, 3vw, 48px) 56px;
@@ -1550,14 +1551,14 @@ h1, h2, h3 {
 
   .home-content {
     width: 100%;
-    max-width: 1200px;
+    max-width: 920px;
     margin: 0 auto;
     padding: 12px 0 32px;
   }
 
   .upload-page {
     width: 100%;
-    max-width: 1280px;
+    max-width: 960px;
     margin-inline: auto;
     padding: 24px 0 !important;
   }
@@ -1613,7 +1614,7 @@ h1, h2, h3 {
 
   .app-shell {
     width: 100%;
-    max-width: 1560px;
+    max-width: 1200px;
     min-height: calc(100vh - 40px);
     min-height: calc(100dvh - 40px);
     margin-inline: auto;
@@ -1632,15 +1633,15 @@ h1, h2, h3 {
   }
 
   .page-content {
-    max-width: 1280px;
+    max-width: 1040px;
   }
 
   .home-content {
-    max-width: 1080px;
+    max-width: 920px;
   }
 
   .upload-page {
-    max-width: 1120px;
+    max-width: 960px;
   }
 }
 
