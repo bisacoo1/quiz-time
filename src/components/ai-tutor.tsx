@@ -91,20 +91,26 @@ export function AiTutor({
             AI Tutor
           </div>
 
-          {messages.map((message, index) => (
-            <p
-              key={index}
-              style={{
-                margin: 0,
-                whiteSpace: "pre-wrap",
-                lineHeight: 1.55,
-                color: message.role === "user" ? "var(--text-muted)" : "var(--text)",
-              }}
-            >
-              {message.role === "user" ? "You: " : "Tutor: "}
-              {message.content}
-            </p>
-          ))}
+          {messages.map((message, index) => {
+            const content =
+              message.role === "assistant"
+                ? message.content.replace(/^#{1,6}\s+/gm, "")
+                : message.content;
+            return (
+              <p
+                key={index}
+                style={{
+                  margin: 0,
+                  whiteSpace: "pre-wrap",
+                  lineHeight: 1.55,
+                  color: message.role === "user" ? "var(--text-muted)" : "var(--text)",
+                }}
+              >
+                {message.role === "user" ? "You: " : "Tutor: "}
+                {content}
+              </p>
+            );
+          })}
 
           {loading && (
             <p style={{ margin: 0, display: "flex", alignItems: "center", gap: 8, color: "var(--text-muted)" }}>
