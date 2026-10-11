@@ -1606,6 +1606,44 @@ h1, h2, h3 {
   }
 }
 
+@media (min-width: 1280px) {
+  body {
+    padding: 20px;
+  }
+
+  .app-shell {
+    width: 100%;
+    max-width: 1560px;
+    min-height: calc(100vh - 40px);
+    min-height: calc(100dvh - 40px);
+    margin-inline: auto;
+    border: 1px solid rgba(23, 23, 23, 0.07);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-app);
+  }
+
+  .topbar {
+    padding-inline: clamp(24px, 3vw, 44px);
+  }
+
+  .nav-bottom {
+    padding-inline: 18px;
+    background: #FCFBF9;
+  }
+
+  .page-content {
+    max-width: 1280px;
+  }
+
+  .home-content {
+    max-width: 1080px;
+  }
+
+  .upload-page {
+    max-width: 1120px;
+  }
+}
+
 .login-error {
   margin: 0 0 14px;
   padding: 10px 12px;
