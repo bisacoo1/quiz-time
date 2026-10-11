@@ -1516,12 +1516,26 @@ function UploadPage({
       {mode === "file" ? (
         <>
           <div
-            className={`upload-zone ${dragOver ? "drag-over" : ""}`}
-            style={{ padding: picked.length ? "26px 20px" : "40px 20px", textAlign: "center", marginBottom: 16 }}
+            className={`upload-zone ${picked.length ? "has-files" : "is-empty"} ${dragOver ? "drag-over" : ""}`}
+            style={{ textAlign: "center", marginBottom: 16 }}
             onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-            onDragLeave={() => setDragOver(false)}
+            onDragEnter={(e) => { e.preventDefault(); setDragOver(true); }}
+            onDragLeave={(e) => {
+              if (!(e.relatedTarget instanceof Node) || !e.currentTarget.contains(e.relatedTarget)) {
+                setDragOver(false);
+              }
+            }}
             onDrop={handleDrop}
             onClick={() => fileRef.current?.click()}
+            role={picked.length ? undefined : "button"}
+            tabIndex={picked.length ? undefined : 0}
+            aria-label={picked.length ? undefined : "Choose files to upload or drop them here"}
+            onKeyDown={(e) => {
+              if (!picked.length && (e.key === "Enter" || e.key === " ")) {
+                e.preventDefault();
+                fileRef.current?.click();
+              }
+            }}
           >
             <input
               ref={fileRef}
@@ -1531,21 +1545,24 @@ function UploadPage({
               style={{ display: "none" }}
               onChange={handleFileChange}
             />
-            <div style={{ marginBottom: 10, color: "var(--accent-dark)", display: "flex", justifyContent: "center" }}>
+            <div className="upload-zone-icon">
               {picked.length ? (
-                <ImageIcon size={48} strokeWidth={1.5} aria-hidden />
+                <ImageIcon size={52} strokeWidth={1.5} aria-hidden />
               ) : (
-                <FolderOpen size={48} strokeWidth={1.5} aria-hidden />
+                <FolderOpen size={56} strokeWidth={1.5} aria-hidden />
               )}
             </div>
-            <p style={{ fontWeight: 700, fontSize: 16, margin: "0 0 6px" }}>
-              {picked.length ? "Add more files" : "Tap to upload or drag & drop"}
-            </p>
-            <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0 }}>
-              {picked.length
-                ? `${picked.length} of ${MAX_FILES} added · ${formatSize(totalBytes)}`
-                : `PDF, Word, PowerPoint, JPG, PNG, WEBP · up to ${MAX_FILES} files`}
-            </p>
+            <div className="upload-zone-copy">
+              <p className="upload-zone-title">
+                {picked.length ? "Add more files" : "Tap to upload or drag & drop"}
+              </p>
+              <p className="upload-zone-description">
+                {picked.length
+                  ? `${picked.length} of ${MAX_FILES} added · ${formatSize(totalBytes)}`
+                  : `PDF, Word, PowerPoint, JPG, PNG, WEBP · up to ${MAX_FILES} files`}
+              </p>
+              {!picked.length && <span className="upload-zone-action">Choose files</span>}
+            </div>
           </div>
 
           {/* Selected files */}
