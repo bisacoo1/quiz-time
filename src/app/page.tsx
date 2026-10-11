@@ -981,6 +981,11 @@ function UploadPage({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [statusText, setStatusText] = useState("");
+  const [uploadProgress, setUploadProgress] = useState<{
+    stage: "preparing" | "uploading" | "processing" | "creating";
+    percent: number | null;
+    detail?: string;
+  } | null>(null);
   const [textInput, setTextInput] = useState("");
   const [mode, setMode] = useState<"file" | "text">("file");
   const [picked, setPicked] = useState<PickedFile[]>([]);
@@ -1091,6 +1096,7 @@ function UploadPage({
   const handleSubmit = async () => {
     setError("");
     setStatusText("");
+    setUploadProgress({ stage: "preparing", percent: null });
     setLoading(true);
 
     try {
@@ -1107,28 +1113,56 @@ function UploadPage({
         notice?: string;
       };
 
-      /** Send one FormData payload to /api/scan and parse the JSON response. */
-      const sendScanRequest = async (formData: FormData): Promise<ScanResponse> => {
+      /** Send a scan request and report actual network upload progress. */
+      const sendScanRequest = async (
+        formData: FormData,
+        uploadLabel: string
+      ): Promise<ScanResponse> => {
         // Attach the course so the server can frame the flashcards for this
         // student's program (empty → the server uses the generic prompt).
         const courseValue = tailorFor.trim();
         if (courseValue) formData.append("course", courseValue);
-        const res = await fetch("/api/scan", { method: "POST", body: formData });
+        const { raw, status } = await new Promise<{ raw: string; status: number }>(
+          (resolve, reject) => {
+            const request = new XMLHttpRequest();
+            request.open("POST", "/api/scan");
+            request.upload.addEventListener("progress", (event) => {
+              if (!event.lengthComputable) return;
+              setUploadProgress({
+                stage: "uploading",
+                percent: Math.round((event.loaded / event.total) * 100),
+                detail: uploadLabel,
+              });
+            });
+            request.upload.addEventListener("load", () => {
+              setUploadProgress({ stage: "processing", percent: null });
+            });
+            request.addEventListener("load", () => {
+              resolve({ raw: request.responseText, status: request.status });
+            });
+            request.addEventListener("error", () => {
+              reject(new Error("Network error while uploading. Check your connection and try again."));
+            });
+            request.addEventListener("abort", () => {
+              reject(new Error("The upload was interrupted. Please try again."));
+            });
+            request.send(formData);
+          }
+        );
 
         // The body may not be JSON (e.g. a host-level 413 page), so parse
         // defensively instead of crashing with "not valid JSON".
-        const raw = await res.text();
         let data: ScanResponse | null = null;
         if (raw) {
           try { data = JSON.parse(raw); } catch { data = null; }
         }
-        if (!res.ok || !data || data.error) {
+        if (status < 200 || status >= 300 || !data || data.error) {
           const sizeHint =
-            res.status === 413
+            status === 413
               ? " — that upload is too large for the server to accept. Remove a few files or use smaller ones."
               : "";
           throw new Error(
-            data?.error || `The upload failed (HTTP ${res.status}${sizeHint || ""}). Please try again.`
+            data?.error || `The upload failed (HTTP ${status}${sizeHint || ""}). Please try again.`
           );
         }
         if (!data.cards) {
@@ -1333,16 +1367,21 @@ function UploadPage({
           binaryFiles.forEach((f) => formData.append("file", f));
           if (joinedText) formData.append("text", joinedText);
 
-          const result = await sendScanRequest(formData);
+          const result = await sendScanRequest(
+            formData,
+            mode === "file" ? "Uploading files" : "Uploading notes"
+          );
           allResults.push(result);
         } else {
           // ── Multi-part upload ────────────────────────────────────────────
           // Part 1 includes binary files (images, small docs) alongside the
           // first text chunk. Parts 2+ carry only their text chunk.
           for (let i = 0; i < uploadParts.length; i++) {
-            setStatusText(
-              `Uploading part ${i + 1} of ${uploadParts.length}...`
-            );
+            setUploadProgress({
+              stage: "preparing",
+              percent: null,
+              detail: `Preparing part ${i + 1} of ${uploadParts.length}`,
+            });
 
             const formData = new FormData();
             if (i === 0) {
@@ -1357,7 +1396,10 @@ function UploadPage({
                 : "";
             formData.append("text", partLabel + uploadParts[i]);
 
-            const result = await sendScanRequest(formData);
+            const result = await sendScanRequest(
+              formData,
+              `Uploading part ${i + 1} of ${uploadParts.length}`
+            );
             allResults.push(result);
 
             // Brief pause between parts to avoid hitting rate limits.
@@ -1376,6 +1418,7 @@ function UploadPage({
         if (mergedCards.length === 0) {
           throw new Error("No flashcards were generated from this content");
         }
+        setUploadProgress({ stage: "creating", percent: null });
 
         const pdfs = picked.filter((item) => item.kind === "PDF").length;
         const words = picked.filter((item) => item.kind === "Word").length;
@@ -1419,7 +1462,8 @@ function UploadPage({
         formData.append("text", textInput.trim());
         sourceType = "text";
 
-        const result = await sendScanRequest(formData);
+        const result = await sendScanRequest(formData, "Uploading notes");
+        setUploadProgress({ stage: "creating", percent: null });
         onCardsReady(result.cards || [], result.title || "Study Set", result.summary || "", sourceType);
         mascotSay("Ta-da! Your flashcards are ready — open your new study set and let's go! 🎉", "wave");
         if (result.notice) {
@@ -1434,6 +1478,7 @@ function UploadPage({
     } finally {
       setLoading(false);
       setStatusText("");
+      setUploadProgress(null);
     }
   };
 
@@ -1752,30 +1797,47 @@ function UploadPage({
         )}
       </button>
 
-      {loading && !statusText && (
-        <p style={{ textAlign: "center", fontSize: 13, color: "var(--text-muted)", marginTop: 12 }}>
-          <Bot size={15} className="icon-inline" aria-hidden /> AI is reading your material... This may take a moment!
-        </p>
-      )}
-      {loading && statusText && statusText.includes("part") && (
-        <div style={{
-          textAlign: "center",
-          marginTop: 12,
-          padding: "10px 16px",
-          background: "linear-gradient(135deg, #eff6ff, #eef2ff)",
-          border: "1.5px solid #bfdbfe",
-          borderRadius: 14,
-          fontSize: 13,
-          color: "#1d4ed8",
-          fontWeight: 600,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          gap: 8,
-        }}>
-          <Layers size={15} aria-hidden />
-          <span>{statusText}</span>
-        </div>
+      {loading && uploadProgress && (
+        <section className="upload-progress" aria-label="Upload progress" aria-live="polite">
+          <div className="upload-progress-heading">
+            <span className="upload-progress-stage">
+              {uploadProgress.stage === "preparing"
+                ? "Preparing your material"
+                : uploadProgress.stage === "uploading"
+                ? "Uploading"
+                : uploadProgress.stage === "processing"
+                ? "AI is processing your material"
+                : "Creating your flashcards"}
+            </span>
+            {uploadProgress.percent !== null && (
+              <span className="upload-progress-percent">{uploadProgress.percent}%</span>
+            )}
+          </div>
+          <div
+            className={`upload-progress-track ${uploadProgress.percent === null ? "is-indeterminate" : ""}`}
+            role="progressbar"
+            aria-label={
+              uploadProgress.percent === null
+                ? "Upload and flashcard generation progress"
+                : `Uploading: ${uploadProgress.percent}%`
+            }
+            aria-valuemin={0}
+            aria-valuemax={100}
+            {...(uploadProgress.percent !== null ? { "aria-valuenow": uploadProgress.percent } : {})}
+          >
+            <div
+              className="upload-progress-fill"
+              style={
+                uploadProgress.percent === null
+                  ? undefined
+                  : { width: `${uploadProgress.percent}%` }
+              }
+            />
+          </div>
+          {(statusText || uploadProgress.detail) && (
+            <p className="upload-progress-detail">{statusText || uploadProgress.detail}</p>
+          )}
+        </section>
       )}
     </div>
   );

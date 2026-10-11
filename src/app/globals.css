@@ -941,6 +941,75 @@ h1, h2, h3 {
   transform: translateY(-1px);
 }
 
+.upload-progress {
+  margin-top: 14px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-xs);
+  animation: upload-progress-enter 0.22s ease-out both;
+}
+
+.upload-progress-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 9px;
+}
+
+.upload-progress-stage {
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.upload-progress-percent {
+  color: var(--primary);
+  font-size: 13px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.upload-progress-track {
+  position: relative;
+  height: 8px;
+  overflow: hidden;
+  border-radius: var(--radius-full);
+  background: var(--gray-100);
+}
+
+.upload-progress-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--primary), #818cf8);
+  transition: width 0.2s ease-out;
+}
+
+.upload-progress-track.is-indeterminate .upload-progress-fill {
+  position: absolute;
+  width: 38%;
+  animation: upload-progress-sweep 1.25s ease-in-out infinite;
+}
+
+.upload-progress-detail {
+  margin: 8px 0 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+@keyframes upload-progress-enter {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes upload-progress-sweep {
+  from { left: -40%; }
+  to { left: 105%; }
+}
+
 @keyframes upload-icon-float {
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-5px); }
