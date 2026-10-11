@@ -6272,6 +6272,15 @@ interface ActivityItem {
   question: string;
 }
 
+interface WeakCard {
+  cardId: number;
+  sessionId: number;
+  deckTitle: string;
+  question: string;
+  attempts: number;
+  incorrectCount: number;
+}
+
 interface StatsData {
   overall: {
     totalAnswers: number;
@@ -6292,6 +6301,7 @@ interface StatsData {
     nextDueAt?: string | null;
   };
   decks: DeckStat[];
+  weakCards?: WeakCard[];
   recent: ActivityItem[];
 }
 
@@ -6415,7 +6425,7 @@ function StatsPage({
     );
   }
 
-  const { overall, decks, recent } = stats;
+  const { overall, decks, weakCards = [], recent } = stats;
   const studiedDecks = decks.filter((d) => d.answerCount > 0);
   const freshDecks = decks.filter((d) => d.answerCount === 0);
 
@@ -6542,6 +6552,55 @@ function StatsPage({
           </div>
         ))}
       </div>
+
+      <section aria-labelledby="weak-spots-heading" style={{ marginBottom: 22 }}>
+        <h3
+          id="weak-spots-heading"
+          style={{ fontSize: 16, fontWeight: 800, margin: "0 0 4px", display: "flex", alignItems: "center", gap: 7 }}
+        >
+          <Brain size={17} aria-hidden />
+          Cards to revisit
+        </h3>
+        <p style={{ margin: "0 0 12px", fontSize: 12, color: "var(--text-muted)" }}>
+          Based on cards you&apos;ve answered incorrectly at least twice. This highlights tricky cards, not whole subjects.
+        </p>
+        {weakCards.length === 0 ? (
+          <div className="glass-card" style={{ padding: "14px 16px", fontSize: 13, color: "var(--text-muted)" }}>
+            No repeated misses yet. As you study, cards that need another look will appear here.
+          </div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {weakCards.map((card) => (
+              <div
+                key={`${card.sessionId}-${card.cardId}`}
+                className="glass-card"
+                style={{ padding: "14px 16px", display: "flex", flexDirection: "column", gap: 8 }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 600 }}>
+                    {card.deckTitle}
+                  </span>
+                  <span className="badge" style={{ background: "#fff1f2", color: "#9f1239", flexShrink: 0 }}>
+                    Missed {card.incorrectCount} times
+                  </span>
+                </div>
+                <p style={{ margin: 0, fontSize: 14, fontWeight: 700, lineHeight: 1.45 }}>
+                  {card.question}
+                </p>
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => onOpenDeck(card.sessionId)}
+                  style={{ alignSelf: "flex-start" }}
+                >
+                  Review this set
+                  <ArrowRight size={15} aria-hidden />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
 
       {/* Per-deck progress */}
       <h3 style={{ fontSize: 16, fontWeight: 800, margin: "0 0 12px", display: "flex", alignItems: "center", gap: 7 }}>
