@@ -19,6 +19,9 @@ QuizTime turns them into flashcards, then lets you review them four ways:
 - **AI Tutor** – after revealing or answering a card, ask for a plain-language
   explanation, a brief example, or a follow-up grounded in that card. The tutor
   uses the configured AI provider and requires an internet connection.
+- **Weak spots** – Study Stats highlights cards answered incorrectly at least
+  twice and links back to their study sets, making recurring trouble spots easy
+  to revisit without labeling an entire subject from a single mistake.
 - **Spaced Review** – the daily queue: QuizTime schedules every card with an
   SM-2 descendant and shows you only what you're about to forget. Grade each
   card Again / Hard / Good / Easy and it is rescheduled automatically — see

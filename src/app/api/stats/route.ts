@@ -44,7 +44,7 @@ export async function GET() {
         limit 1
       ), 0)::int as streak`;
 
-    const [overallRows, deckRows, recentRows, streakRes, reviewRows, reviewDeckRows] =
+    const [overallRows, deckRows, recentRows, weakCardRows, streakRes, reviewRows, reviewDeckRows] =
       await Promise.all([
       db
         .select({
@@ -106,6 +106,29 @@ export async function GET() {
         .where(eq(studyResults.userId, userId))
         .orderBy(desc(studyResults.answeredAt), desc(studyResults.id))
         .limit(RECENT_LIMIT),
+
+      // A repeated-miss signal is more actionable than labeling a learner
+      // from one wrong answer. Only cards missed at least twice are shown.
+      db
+        .select({
+          cardId: flashcards.id,
+          sessionId: studySessions.id,
+          deckTitle: studySessions.title,
+          question: sql<string>`left(${flashcards.question}, 180)`,
+          attempts: sql<number>`count(${studyResults.id})::int`,
+          incorrectCount: sql<number>`count(*) filter (where not ${studyResults.correct})::int`,
+        })
+        .from(studyResults)
+        .innerJoin(studySessions, eq(studySessions.id, studyResults.sessionId))
+        .innerJoin(flashcards, eq(flashcards.id, studyResults.cardId))
+        .where(eq(studyResults.userId, userId))
+        .groupBy(flashcards.id, studySessions.id)
+        .having(sql`count(*) filter (where not ${studyResults.correct}) >= 2`)
+        .orderBy(
+          desc(sql`count(*) filter (where not ${studyResults.correct})`),
+          desc(sql`count(*) filter (where not ${studyResults.correct})::float / count(*)`)
+        )
+        .limit(8),
 
         // Standalone expression (no FROM) — always returns exactly one row,
         // even for a brand-new user with zero results.
@@ -210,6 +233,7 @@ export async function GET() {
         nextDueAt: toIso(reviews.nextDueAt),
       },
       decks,
+      weakCards: weakCardRows,
       recent: recentRows,
     });
   } catch (error) {
