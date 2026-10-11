@@ -6596,7 +6596,7 @@ function StatsPage({
           Cards to revisit
         </h3>
         <p style={{ margin: "0 0 12px", fontSize: 12, color: "var(--text-muted)" }}>
-          Based on cards you&apos;ve answered incorrectly at least twice. This highlights tricky cards, not whole subjects.
+          Cards missed at least twice show here, with recent misses first. They leave after two correct answers in a row.
         </p>
         {weakCards.length === 0 ? (
           <div className="glass-card" style={{ padding: "14px 16px", fontSize: 13, color: "var(--text-muted)" }}>

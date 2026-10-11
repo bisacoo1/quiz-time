@@ -44,6 +44,42 @@ export async function GET() {
         limit 1
       ), 0)::int as streak`;
 
+    const rankedWeakResults = db
+      .select({
+        cardId: studyResults.cardId,
+        correct: studyResults.correct,
+        answeredAt: studyResults.answeredAt,
+        recency: sql<number>`row_number() over (
+          partition by ${studyResults.cardId}
+          order by ${studyResults.answeredAt} desc, ${studyResults.id} desc
+        )`.as("recency"),
+      })
+      .from(studyResults)
+      .where(eq(studyResults.userId, userId))
+      .as("ranked_weak_results");
+
+    const weakCardSummary = db
+      .select({
+        cardId: rankedWeakResults.cardId,
+        attempts: sql<number>`count(*)::int`.as("attempts"),
+        incorrectCount: sql<number>`count(*) filter (where not ${rankedWeakResults.correct})::int`.as(
+          "incorrect_count"
+        ),
+        lastIncorrectAt: sql<Date>`max(${rankedWeakResults.answeredAt}) filter (
+          where not ${rankedWeakResults.correct}
+        )`.as("last_incorrect_at"),
+        latestTwoCount: sql<number>`count(*) filter (where ${rankedWeakResults.recency} <= 2)::int`.as(
+          "latest_two_count"
+        ),
+        latestTwoCorrect: sql<boolean>`bool_and(${rankedWeakResults.correct}) filter (
+          where ${rankedWeakResults.recency} <= 2
+        )`.as("latest_two_correct"),
+      })
+      .from(rankedWeakResults)
+      .groupBy(rankedWeakResults.cardId)
+      .having(sql`count(*) filter (where not ${rankedWeakResults.correct}) >= 2`)
+      .as("weak_card_summary");
+
     const [overallRows, deckRows, recentRows, weakCardRows, streakRes, reviewRows, reviewDeckRows] =
       await Promise.all([
       db
@@ -107,8 +143,8 @@ export async function GET() {
         .orderBy(desc(studyResults.answeredAt), desc(studyResults.id))
         .limit(RECENT_LIMIT),
 
-      // A repeated-miss signal is more actionable than labeling a learner
-      // from one wrong answer. Only cards missed at least twice are shown.
+      // Keep repeatedly missed cards until the learner answers correctly
+      // twice in a row, and prioritize cards with the most recent misses.
       db
         .select({
           cardId: flashcards.id,
@@ -118,18 +154,22 @@ export async function GET() {
           answer: flashcards.answer,
           hint: flashcards.hint,
           difficulty: flashcards.difficulty,
-          attempts: sql<number>`count(${studyResults.id})::int`,
-          incorrectCount: sql<number>`count(*) filter (where not ${studyResults.correct})::int`,
+          attempts: weakCardSummary.attempts,
+          incorrectCount: weakCardSummary.incorrectCount,
         })
-        .from(studyResults)
-        .innerJoin(studySessions, eq(studySessions.id, studyResults.sessionId))
-        .innerJoin(flashcards, eq(flashcards.id, studyResults.cardId))
-        .where(eq(studyResults.userId, userId))
-        .groupBy(flashcards.id, studySessions.id)
-        .having(sql`count(*) filter (where not ${studyResults.correct}) >= 2`)
+        .from(weakCardSummary)
+        .innerJoin(flashcards, eq(flashcards.id, weakCardSummary.cardId))
+        .innerJoin(studySessions, eq(studySessions.id, flashcards.sessionId))
+        .where(
+          sql`not (
+            ${weakCardSummary.latestTwoCount} = 2
+            and ${weakCardSummary.latestTwoCorrect}
+          )`
+        )
         .orderBy(
-          desc(sql`count(*) filter (where not ${studyResults.correct})`),
-          desc(sql`count(*) filter (where not ${studyResults.correct})::float / count(*)`)
+          desc(weakCardSummary.lastIncorrectAt),
+          desc(weakCardSummary.incorrectCount),
+          desc(sql`${weakCardSummary.incorrectCount}::float / ${weakCardSummary.attempts}`)
         )
         .limit(8),
 
