@@ -16,6 +16,9 @@ QuizTime turns them into flashcards, then lets you review them four ways:
   answer is a list (the AI writes these as items separated by ` ; `, e.g.
   "Mango ; Banana ; Orange") become "name them all" questions with per-item
   feedback.
+- **AI Tutor** – after revealing or answering a card, ask for a plain-language
+  explanation, a brief example, or a follow-up grounded in that card. The tutor
+  uses the configured AI provider and requires an internet connection.
 - **Spaced Review** – the daily queue: QuizTime schedules every card with an
   SM-2 descendant and shows you only what you're about to forget. Grade each
   card Again / Hard / Good / Easy and it is rescheduled automatically — see
@@ -36,6 +39,15 @@ QuizTime turns them into flashcards, then lets you review them four ways:
   and when everybody else was last seen (their own private copy — no other
   account ever sees it) — see
   [Who's online](#whos-online-owner-roster).
+
+## AI Tutor
+
+In Study, Exam, Identification and Enumeration modes, reveal or submit an
+answer and choose **Explain this with AI** to open help for that card. The
+tutor explains the concept and can answer follow-up questions while keeping
+the card's question, answer and (when available) your submitted answer in
+context. It uses the existing Gemini/OpenRouter provider failover, requires
+sign-in and a network connection, and is rate-limited per account.
 
 ## Uploading
 
