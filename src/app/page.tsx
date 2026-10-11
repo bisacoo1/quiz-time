@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo, type ReactNode } from "react";
 import { useSession, signIn, signOut } from "next-auth/react";
 import { LoginPage } from "@/components/login-page";
+import { AiTutor } from "@/components/ai-tutor";
 import { OwnerPresenceBar, PresencePanel } from "@/components/owner-presence";
 import { usePresenceRoster } from "@/lib/use-presence";
 import {
@@ -750,6 +751,8 @@ function StudyCard({
           </button>
         </div>
       )}
+
+      {flipped && <AiTutor question={card.question} answer={card.answer} />}
 
       {/* Progress indicator */}
       {progress && (
@@ -1937,6 +1940,13 @@ function ExamCard({
   // Keyboard: 1-4 to answer, Enter / Space to continue
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      const target = e.target;
+      if (
+        target instanceof HTMLElement &&
+        (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName))
+      ) {
+        return;
+      }
       if (!answered) {
         const n = Number(e.key);
         if (n >= 1 && n <= options.length) onChoose(n - 1);
@@ -2045,6 +2055,12 @@ function ExamCard({
                 : ` The correct answer is: ${card.answer}`}
             </span>
           </div>
+
+          <AiTutor
+            question={card.question}
+            answer={card.answer}
+            studentAnswer={chosen === null ? undefined : options[chosen]}
+          />
 
           <button className="btn btn-primary btn-lg" style={{ width: "100%" }} onClick={onNext}>
             {isLast ? "See Results" : "Next Question"}
@@ -2211,6 +2227,12 @@ function IdentifyCard({
                 : ` The correct answer is: ${card.answer}`}
             </span>
           </div>
+
+          <AiTutor
+            question={card.question}
+            answer={card.answer}
+            studentAnswer={submitted.typed}
+          />
 
           <button type="button" className="btn btn-primary btn-lg" style={{ width: "100%" }} onClick={onNext}>
             {isLast ? "See Results" : "Next Question"}
@@ -2406,6 +2428,12 @@ function EnumerateCard({
                   : ""}
             </span>
           </div>
+
+          <AiTutor
+            question={card.question}
+            answer={card.answer}
+            studentAnswer={submitted.userItems.filter(Boolean).join("; ")}
+          />
 
           <button type="button" className="btn btn-primary btn-lg" style={{ width: "100%" }} onClick={onNext}>
             {isLast ? "See Results" : "Next Question"}
