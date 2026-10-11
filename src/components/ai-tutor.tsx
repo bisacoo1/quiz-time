@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
 import { LoaderCircle, MessageCircle, Send, Sparkles } from "lucide-react";
 
 interface TutorMessage {
@@ -22,30 +22,46 @@ export function AiTutor({
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [practiceQuestion, setPracticeQuestion] = useState("");
+  const [practiceAnswer, setPracticeAnswer] = useState("");
+  const [practiceFeedback, setPracticeFeedback] = useState("");
+  const [practiceLoading, setPracticeLoading] = useState(false);
+  const [practiceError, setPracticeError] = useState("");
+
+  const requestTutor = async (
+    message: string,
+    action: "explain" | "practice" | "check",
+    checkQuestion?: string
+  ): Promise<string> => {
+    const response = await fetch("/api/tutor", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        question,
+        answer,
+        studentAnswer,
+        message,
+        action,
+        practiceQuestion: checkQuestion,
+        history: messages.slice(-8),
+      }),
+    });
+    const body = (await response.json()) as { explanation?: unknown; error?: unknown };
+    if (!response.ok) {
+      throw new Error(typeof body.error === "string" ? body.error : "The tutor couldn't respond. Please try again.");
+    }
+    const explanation = body.explanation;
+    if (typeof explanation !== "string" || !explanation.trim()) {
+      throw new Error("The tutor returned an empty response. Please try again.");
+    }
+    return explanation.trim().replace(/^#{1,6}\s+/gm, "");
+  };
 
   const sendMessage = async (message: string) => {
     setLoading(true);
     setError("");
     try {
-      const response = await fetch("/api/tutor", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          question,
-          answer,
-          studentAnswer,
-          message,
-          history: messages.slice(-8),
-        }),
-      });
-      const body = (await response.json()) as { explanation?: unknown; error?: unknown };
-      if (!response.ok) {
-        throw new Error(typeof body.error === "string" ? body.error : "The tutor couldn't respond. Please try again.");
-      }
-      const explanation = body.explanation;
-      if (typeof explanation !== "string" || !explanation.trim()) {
-        throw new Error("The tutor returned an empty explanation. Please try again.");
-      }
+      const explanation = await requestTutor(message, "explain");
       setMessages((previous) => [
         ...previous,
         { role: "user", content: message },
@@ -56,6 +72,42 @@ export function AiTutor({
       setError(err instanceof Error ? err.message : "The tutor couldn't respond. Please try again.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const generatePracticeQuestion = async () => {
+    setPracticeLoading(true);
+    setPracticeError("");
+    setPracticeQuestion("");
+    setPracticeAnswer("");
+    setPracticeFeedback("");
+    try {
+      const generated = await requestTutor(
+        "Create one short question that checks whether I understood the key idea. Ask only the question; do not include the answer or hints.",
+        "practice"
+      );
+      setPracticeQuestion(generated);
+    } catch (err) {
+      setPracticeError(err instanceof Error ? err.message : "Couldn't create a practice question. Please try again.");
+    } finally {
+      setPracticeLoading(false);
+    }
+  };
+
+  const checkPracticeAnswer = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const response = practiceAnswer.trim();
+    if (!response || !practiceQuestion || practiceLoading) return;
+
+    setPracticeLoading(true);
+    setPracticeError("");
+    try {
+      const feedback = await requestTutor(`The learner answered: ${response}`, "check", practiceQuestion);
+      setPracticeFeedback(feedback);
+    } catch (err) {
+      setPracticeError(err instanceof Error ? err.message : "Couldn't check your answer. Please try again.");
+    } finally {
+      setPracticeLoading(false);
     }
   };
 
@@ -122,6 +174,76 @@ export function AiTutor({
             <p role="alert" style={{ margin: 0, color: "#be123c", fontSize: 13 }}>
               {error}
             </p>
+          )}
+
+          {messages.some((message) => message.role === "assistant") && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {!practiceQuestion && !practiceFeedback && (
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => void generatePracticeQuestion()}
+                  disabled={loading || practiceLoading}
+                  style={{ alignSelf: "flex-start", gap: 7, color: "var(--accent-dark)" }}
+                >
+                  <Sparkles size={15} aria-hidden />
+                  Check my understanding
+                </button>
+              )}
+              {practiceQuestion && (
+                <>
+                  <p style={{ margin: 0, fontWeight: 700, lineHeight: 1.5 }}>
+                    Quick check: {practiceQuestion}
+                  </p>
+                  {!practiceFeedback ? (
+                    <form onSubmit={(event) => void checkPracticeAnswer(event)} style={{ display: "flex", gap: 8 }}>
+                      <input
+                        className="type-input"
+                        value={practiceAnswer}
+                        onChange={(event) => setPracticeAnswer(event.target.value)}
+                        maxLength={500}
+                        placeholder="Write your answer…"
+                        aria-label="Your answer to the understanding check"
+                        disabled={practiceLoading}
+                      />
+                      <button
+                        type="submit"
+                        className="btn btn-primary"
+                        disabled={practiceLoading || !practiceAnswer.trim()}
+                      >
+                        Check
+                      </button>
+                    </form>
+                  ) : (
+                    <p style={{ margin: 0, whiteSpace: "pre-wrap", lineHeight: 1.55 }}>
+                      {practiceFeedback}
+                    </p>
+                  )}
+                </>
+              )}
+              {practiceLoading && (
+                <p style={{ margin: 0, display: "flex", alignItems: "center", gap: 8, color: "var(--text-muted)" }}>
+                  <LoaderCircle size={16} className="animate-spin" aria-hidden />
+                  {practiceQuestion ? "Checking your answer…" : "Creating a quick check…"}
+                </p>
+              )}
+              {practiceError && (
+                <p role="alert" style={{ margin: 0, color: "#be123c", fontSize: 13 }}>
+                  {practiceError}
+                </p>
+              )}
+              {practiceFeedback && (
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => void generatePracticeQuestion()}
+                  disabled={loading || practiceLoading}
+                  style={{ alignSelf: "flex-start" }}
+                >
+                  Try another question
+                </button>
+              )}
+            </div>
           )}
 
           <form
