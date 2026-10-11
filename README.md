@@ -46,8 +46,10 @@ In Study, Exam, Identification and Enumeration modes, reveal or submit an
 answer and choose **Explain this with AI** to open help for that card. The
 tutor explains the concept and can answer follow-up questions while keeping
 the card's question, answer and (when available) your submitted answer in
-context. It uses the existing Gemini/OpenRouter provider failover, requires
-sign-in and a network connection, and is rate-limited per account.
+context. Choose **Check my understanding** to get a short practice question
+and feedback on your response. It uses the existing Gemini/OpenRouter provider
+failover, requires sign-in and a network connection, and is rate-limited per
+account.
 
 ## Uploading
 
