@@ -152,6 +152,7 @@ import {
 // ─── Types ───────────────────────────────────────────────────────────────────
 interface Flashcard {
   id?: number;
+  sessionId?: number;
   question: string;
   answer: string;
   hint?: string | null;
@@ -2514,6 +2515,7 @@ function ExamSummary({
   maxScore,
   bestStreak,
   elapsed,
+  baselineAccuracy,
   onRetry,
   onStudyMissed,
   onBackToModes,
@@ -2525,6 +2527,7 @@ function ExamSummary({
   maxScore: number;
   bestStreak: number;
   elapsed: number;
+  baselineAccuracy?: number;
   onRetry: () => void;
   onStudyMissed: () => void;
   onBackToModes: () => void;
@@ -2548,7 +2551,7 @@ function ExamSummary({
         <GradeIcon size={72} strokeWidth={1.5} aria-hidden />
       </div>
       <h2 className="gradient-text" style={{ fontSize: 27, fontWeight: 800, margin: "6px 0 4px" }}>
-        Exam Complete!
+        {completeTitle}
       </h2>
       <p style={{ color: "var(--text-muted)", margin: "0 0 22px", fontSize: 15 }}>{message}</p>
 
@@ -2584,6 +2587,15 @@ function ExamSummary({
           </div>
         ))}
       </div>
+      {baselineAccuracy !== undefined && (
+        <p style={{ margin: "0 0 16px", fontSize: 13, color: "var(--text-muted)" }}>
+          Before this practice: {baselineAccuracy}% accuracy{" "}
+          <strong style={{ color: pct >= baselineAccuracy ? "#047857" : "#b45309" }}>
+            ({pct - baselineAccuracy >= 0 ? "+" : ""}
+            {pct - baselineAccuracy} points this round)
+          </strong>
+        </p>
+      )}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 22 }}>
         <div style={{ background: "white", borderRadius: 16, padding: "12px 8px", boxShadow: "0 4px 16px rgba(29,78,216,0.08)" }}>
           <div style={{ fontSize: 18, fontWeight: 800, color: "#ea580c", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
@@ -2651,7 +2663,7 @@ function ExamSummary({
         )}
         <button className="btn btn-secondary" style={{ width: "100%" }} onClick={onRetry}>
           <Shuffle />
-          Retake Exam (New Order)
+          {retryLabel}
         </button>
         <button className="btn btn-ghost" style={{ width: "100%" }} onClick={onBackToModes}>
           <ArrowLeft />
@@ -3437,6 +3449,8 @@ function QuizPage({
   cards,
   title,
   summary,
+  initialMode,
+  baselineAccuracy,
   online,
   offlineDeck,
   onSave,
@@ -3447,6 +3461,8 @@ function QuizPage({
   cards: Flashcard[];
   title: string;
   summary: string;
+  initialMode?: ScoredMode;
+  baselineAccuracy?: number;
   online: boolean;
   /** This deck was loaded from the device cache rather than the server. */
   offlineDeck?: boolean;
@@ -3455,7 +3471,7 @@ function QuizPage({
   /** Open the deck editor for this saved deck (rename / add / edit / reorder cards). */
   onEditDeck?: () => void;
 }) {
-  const [mode, setMode] = useState<QuizMode>("select");
+  const [mode, setMode] = useState<QuizMode>(initialMode ?? "select");
   /** One "you're offline" toast per deck visit, not one per answer. */
   const queuedNotice = useRef(false);
   /** Consecutive misses inside the current scored run (Nibbles' pep talk). */
@@ -3480,11 +3496,17 @@ function QuizPage({
   const [unknownOnly, setUnknownOnly] = useState(false);
 
   // Exam mode
-  const [examQuestions, setExamQuestions] = useState<ExamQuestion[]>([]);
+  const [examQuestions, setExamQuestions] = useState<ExamQuestion[]>(() =>
+    initialMode === "exam" ? buildExamQuestions(cards) : []
+  );
   const [examIndex, setExamIndex] = useState(0);
   const [answers, setAnswers] = useState<ExamAnswer[]>([]);
   const [score, setScore] = useState(0);
-  const [maxScore, setMaxScore] = useState(0);
+  const [maxScore, setMaxScore] = useState(() =>
+    initialMode === "exam"
+      ? cards.reduce((sum, card, index) => sum + pointsFor(card) + (index === 0 ? 0 : Math.min(index * 2, 10)), 0)
+      : 0
+  );
   const [streak, setStreak] = useState(0);
   const [bestStreak, setBestStreak] = useState(0);
   const [examDone, setExamDone] = useState(false);
@@ -3593,19 +3615,21 @@ function QuizPage({
   const updateProgress = async (
     cardId: number | undefined,
     isKnown: boolean,
-    outcomeMode?: StudyOutcome["mode"]
+    outcomeMode?: StudyOutcome["mode"],
+    cardSessionId?: number
   ) => {
-    if (sessionId && cardId) {
+    const progressSessionId = cardSessionId ?? sessionId;
+    if (progressSessionId && cardId) {
       // Sent now when possible, queued durably in the outbox when not. Either
       // way the UI never waits for the network.
       void (async () => {
-        const outcome = await sendOrQueueWrite(`/api/sessions/${sessionId}`, "PATCH", {
+        const outcome = await sendOrQueueWrite(`/api/sessions/${progressSessionId}`, "PATCH", {
           cardId,
           isKnown,
         });
         if (outcome === "queued") noteQueued();
         // Keep the offline snapshot's "known" count honest too.
-        if (outcome !== "rejected") await saveProgressLocally(sessionId, cardId, isKnown);
+        if (outcome !== "rejected") await saveProgressLocally(progressSessionId, cardId, isKnown);
       })();
     }
     if (cardId) {
@@ -3623,7 +3647,8 @@ function QuizPage({
     recordOutcome(
       cardId,
       isKnown,
-      outcomeMode ?? (mode === "exam" || mode === "identify" || mode === "enumerate" ? mode : "study")
+      outcomeMode ?? (mode === "exam" || mode === "identify" || mode === "enumerate" ? mode : "study"),
+      progressSessionId
     );
   };
 
@@ -3653,10 +3678,11 @@ function QuizPage({
   }, []);
 
   const recordOutcome = useCallback(
-    (cardId: number | undefined, correct: boolean, outcomeMode: StudyOutcome["mode"]) => {
-      if (!sessionId || !cardId) return;
+    (cardId: number | undefined, correct: boolean, outcomeMode: StudyOutcome["mode"], cardSessionId?: number) => {
+      const resultSessionId = cardSessionId ?? sessionId;
+      if (!resultSessionId || !cardId) return;
       const outcome: StudyOutcome = {
-        sessionId,
+        sessionId: resultSessionId,
         cardId,
         correct,
         mode: outcomeMode,
@@ -3687,7 +3713,7 @@ function QuizPage({
 
   // ── Study mode ────────────────────────────────────────────────────────────
   const handleKnow = async () => {
-    await updateProgress(currentCard?.id, true, "study");
+    await updateProgress(currentCard?.id, true, "study", currentCard?.sessionId);
     if (currentIndex >= activeCards.length - 1) {
       setDone(true);
     } else {
@@ -3696,7 +3722,7 @@ function QuizPage({
   };
 
   const handleDontKnow = async () => {
-    await updateProgress(currentCard?.id, false, "study");
+    await updateProgress(currentCard?.id, false, "study", currentCard?.sessionId);
     if (currentIndex >= activeCards.length - 1) {
       setDone(true);
     } else {
@@ -3825,7 +3851,7 @@ function QuizPage({
       if (missRunRef.current === 3) mascotEvent({ type: "struggling" });
     }
 
-    await updateProgress(card.id, isCorrect, outcomeMode);
+    await updateProgress(card.id, isCorrect, outcomeMode, card.sessionId);
   };
 
   const handleChoose = async (optionIndex: number) => {
@@ -4297,6 +4323,9 @@ function QuizPage({
           maxScore={maxScore}
           bestStreak={bestStreak}
           elapsed={elapsed}
+          baselineAccuracy={initialMode === "exam" ? baselineAccuracy : undefined}
+          completeTitle={initialMode === "exam" ? "Weak Spots Practice Complete!" : undefined}
+          retryLabel={initialMode === "exam" ? "Practice Again" : undefined}
           onRetry={() => startScoredRun("exam")}
           onStudyMissed={handleStudyMissed}
           onBackToModes={() => setMode("select")}
@@ -6277,6 +6306,9 @@ interface WeakCard {
   sessionId: number;
   deckTitle: string;
   question: string;
+  answer: string;
+  hint: string | null;
+  difficulty: string;
   attempts: number;
   incorrectCount: number;
 }
@@ -6336,10 +6368,12 @@ function masteryColor(pct: number): string {
 
 function StatsPage({
   onOpenDeck,
+  onPracticeWeak,
   online,
   syncToken,
 }: {
   onOpenDeck: (id: number) => void;
+  onPracticeWeak: (cards: WeakCard[]) => void;
   online: boolean;
   /** Bumped after a background sync so freshly recorded answers show up. */
   syncToken: number;
@@ -6570,6 +6604,17 @@ function StatsPage({
           </div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => onPracticeWeak(weakCards)}
+              disabled={!online}
+              title={online ? undefined : "Connect to practice weak spots"}
+              style={{ alignSelf: "flex-start" }}
+            >
+              <Dumbbell size={17} aria-hidden />
+              Practice weak spots ({weakCards.length})
+            </button>
             {weakCards.map((card) => (
               <div
                 key={`${card.sessionId}-${card.cardId}`}
@@ -7275,6 +7320,8 @@ export default function App() {
   const [activeSessionCards, setActiveSessionCards] = useState<Flashcard[] | null>(null);
   const [activeSessionTitle, setActiveSessionTitle] = useState("");
   const [activeSessionSummary, setActiveSessionSummary] = useState("");
+  const [weakSpotPractice, setWeakSpotPractice] = useState(false);
+  const [weakSpotBaselineAccuracy, setWeakSpotBaselineAccuracy] = useState<number | null>(null);
   const [hasApiKey, setHasApiKey] = useState(true);
   const [deckKey, setDeckKey] = useState(0);
 
@@ -7600,6 +7647,7 @@ export default function App() {
     setPendingSummary(summary);
     setPendingSourceType(sourceType);
     setActiveSessionId(null);
+    setWeakSpotPractice(false);
     setDeckKey((k) => k + 1);
     setTab("quiz");
 
@@ -7661,6 +7709,7 @@ export default function App() {
       setActiveSessionTitle(data.session.title);
       setActiveSessionSummary(data.session.summary ?? "");
       setActiveSessionOffline(data.offline);
+      setWeakSpotPractice(false);
       setPendingCards(null);
       setDeckKey((k) => k + 1);
       setTab("quiz");
@@ -7671,6 +7720,31 @@ export default function App() {
     } catch {
       showToast("Failed to load session", CircleX);
     }
+  };
+
+  const handlePracticeWeakSpots = (weakCards: WeakCard[]) => {
+    if (!online || weakCards.length === 0) return;
+    const attempts = weakCards.reduce((total, card) => total + card.attempts, 0);
+    const correct = weakCards.reduce((total, card) => total + card.attempts - card.incorrectCount, 0);
+    const cards: Flashcard[] = weakCards.map((card) => ({
+      id: card.cardId,
+      sessionId: card.sessionId,
+      question: card.question,
+      answer: card.answer,
+      hint: card.hint,
+      difficulty: card.difficulty,
+    }));
+    setPendingCards(cards);
+    setPendingTitle("Weak Spots Practice");
+    setPendingSummary("A focused quiz from cards you have missed more than once.");
+    setPendingSourceType("text");
+    setActiveSessionId(null);
+    setActiveSessionCards(null);
+    setActiveSessionOffline(false);
+    setWeakSpotPractice(true);
+    setWeakSpotBaselineAccuracy(attempts > 0 ? Math.round((correct / attempts) * 100) : 0);
+    setDeckKey((key) => key + 1);
+    setTab("quiz");
   };
 
   /** One tap: freeze every set (cards, progress, schedules) on this device. */
@@ -7810,9 +7884,11 @@ export default function App() {
           cards={cards}
           title={title}
           summary={summary}
+          initialMode={weakSpotPractice ? "exam" : undefined}
+          baselineAccuracy={weakSpotBaselineAccuracy ?? undefined}
           online={online}
           offlineDeck={activeSessionOffline}
-          onSave={!isViewingSession ? handleSaveSession : undefined}
+          onSave={!isViewingSession && !weakSpotPractice ? handleSaveSession : undefined}
           onEditDeck={
             isViewingSession && activeSessionId !== null
               ? () => {
@@ -7826,9 +7902,15 @@ export default function App() {
               : undefined
           }
           onBack={() => {
-            setTab(isViewingSession ? "sessions" : "upload");
-            if (isViewingSession) setActiveSessionCards(null);
-            else setPendingCards(null);
+            if (weakSpotPractice) {
+              setTab("stats");
+              setPendingCards(null);
+              setWeakSpotPractice(false);
+            } else {
+              setTab(isViewingSession ? "sessions" : "upload");
+              if (isViewingSession) setActiveSessionCards(null);
+              else setPendingCards(null);
+            }
           }}
         />
       );
@@ -7957,7 +8039,14 @@ export default function App() {
     }
     if (tab === "stats") {
       if (!signedIn) return <SignInPrompt feature="see your study stats" />;
-      return <StatsPage onOpenDeck={handleOpenSession} online={online} syncToken={syncToken} />;
+      return (
+        <StatsPage
+          onOpenDeck={handleOpenSession}
+          onPracticeWeak={handlePracticeWeakSpots}
+          online={online}
+          syncToken={syncToken}
+        />
+      );
     }
     if (tab === "review") {
       if (!signedIn) return <SignInPrompt feature="review your cards" />;

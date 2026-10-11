@@ -114,7 +114,10 @@ export async function GET() {
           cardId: flashcards.id,
           sessionId: studySessions.id,
           deckTitle: studySessions.title,
-          question: sql<string>`left(${flashcards.question}, 180)`,
+          question: flashcards.question,
+          answer: flashcards.answer,
+          hint: flashcards.hint,
+          difficulty: flashcards.difficulty,
           attempts: sql<number>`count(${studyResults.id})::int`,
           incorrectCount: sql<number>`count(*) filter (where not ${studyResults.correct})::int`,
         })
