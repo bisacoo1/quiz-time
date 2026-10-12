@@ -22,7 +22,8 @@ QuizTime turns them into flashcards, then lets you review them four ways:
 - **Generated card review** – study the AI-generated cards first, then review
   and edit the study set title, description, card questions, answers, hints and
   difficulty when you choose to save. Add or remove cards and remove exact
-  duplicate question-and-answer pairs before saving the set.
+  duplicate question-and-answer pairs before saving the set; removed cards can
+  be restored with Undo.
 - **Weak spots** – Study Stats highlights cards answered incorrectly at least
   twice, puts recent misses first, and removes a card after two consecutive
   correct answers. Cards link back to their study sets, making recurring

@@ -141,6 +141,7 @@ import {
   TriangleAlert,
   Trophy,
   Type,
+  Undo2,
   Upload,
   Users,
   LogOut,
@@ -1867,6 +1868,9 @@ function GeneratedDeckReview({
   const [summary, setSummary] = useState(initialSummary);
   const [validationError, setValidationError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [removalHistory, setRemovalHistory] = useState<
+    { cards: ReviewCard[]; description: string }[]
+  >([]);
 
   const duplicateKeys = cards
     .map((card) =>
@@ -1882,17 +1886,36 @@ function GeneratedDeckReview({
     setValidationError("");
   };
 
+  const rememberRemoval = (previousCards: ReviewCard[], removedCount: number) => {
+    if (removedCount === 0) return;
+    setRemovalHistory((history) => [
+      ...history.slice(-19),
+      {
+        cards: previousCards,
+        description: `${removedCount} card${removedCount === 1 ? "" : "s"}`,
+      },
+    ]);
+  };
+
+  const undoRemoval = () => {
+    const previousRemoval = removalHistory[removalHistory.length - 1];
+    if (!previousRemoval) return;
+    setCards(previousRemoval.cards);
+    setRemovalHistory((history) => history.slice(0, -1));
+    setValidationError("");
+  };
+
   const removeDuplicates = () => {
     const seen = new Set<string>();
-    setCards((current) =>
-      current.filter((card) => {
-        const key = `${card.question.trim().toLocaleLowerCase()}|${card.answer.trim().toLocaleLowerCase()}`;
-        if (key === "|") return true;
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      })
-    );
+    const next = cards.filter((card) => {
+      const key = `${card.question.trim().toLocaleLowerCase()}|${card.answer.trim().toLocaleLowerCase()}`;
+      if (key === "|") return true;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    rememberRemoval(cards, cards.length - next.length);
+    setCards(next);
   };
 
   const getReviewedDeck = (): { cards: Flashcard[]; title: string; summary: string } | null => {
@@ -2006,11 +2029,19 @@ function GeneratedDeckReview({
 
       <div className="generated-review-cards-heading">
         <h3>Cards to review</h3>
-        {duplicateCount > 0 && (
-          <button type="button" className="btn btn-secondary btn-sm" onClick={removeDuplicates}>
-            Remove {duplicateCount} duplicate{duplicateCount === 1 ? "" : "s"}
-          </button>
-        )}
+        <div className="generated-review-card-tools">
+          {removalHistory.length > 0 && (
+            <button type="button" className="btn btn-ghost btn-sm" onClick={undoRemoval}>
+              <Undo2 size={16} aria-hidden />
+              Undo {removalHistory[removalHistory.length - 1].description}
+            </button>
+          )}
+          {duplicateCount > 0 && (
+            <button type="button" className="btn btn-secondary btn-sm" onClick={removeDuplicates}>
+              Remove {duplicateCount} duplicate{duplicateCount === 1 ? "" : "s"}
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="generated-review-cards">
@@ -2030,7 +2061,11 @@ function GeneratedDeckReview({
               <button
                 type="button"
                 className="btn btn-ghost btn-sm generated-review-delete"
-                onClick={() => setCards((current) => current.filter((item) => item.reviewKey !== card.reviewKey))}
+                onClick={() => {
+                  const next = cards.filter((item) => item.reviewKey !== card.reviewKey);
+                  rememberRemoval(cards, cards.length - next.length);
+                  setCards(next);
+                }}
                 aria-label={`Remove card ${index + 1}`}
               >
                 <Trash size={17} aria-hidden />
