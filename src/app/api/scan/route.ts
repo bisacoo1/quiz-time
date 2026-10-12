@@ -263,8 +263,6 @@ export async function POST(request: NextRequest) {
       cards: parsed.cards,
       model,
       provider,
-      // Only set when we had to switch models (rate limit / unavailable).
-      notice,
     });
   } catch (error) {
     console.error("Scan error:", error);
