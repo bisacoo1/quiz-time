@@ -1109,8 +1109,6 @@ function UploadPage({
         model?: string;
         /** Provider that produced the cards: "gemini" or "openrouter". */
         provider?: string;
-        /** Set when the server had to switch models (rate limit / unavailable). */
-        notice?: string;
       };
 
       /** Send a scan request and report actual network upload progress. */
@@ -1413,7 +1411,19 @@ function UploadPage({
         const mergedCards = allResults.flatMap((r) => r.cards || []);
         const mergedTitle = allResults[0].title || "Study Set";
         const mergedSummary = allResults[0].summary || "";
-        const mergedNotice = allResults.map((r) => r.notice).filter(Boolean).join("; ");
+        const modelsUsed = [
+          ...new Set(
+            allResults
+              .map((result) =>
+                result.model
+                  ? `${result.provider ? `${result.provider}: ` : ""}${result.model}`
+                  : null
+              )
+              .filter((model): model is string => model !== null)
+          ),
+        ];
+        const modelLabel =
+          modelsUsed.length > 0 ? modelsUsed.join(", ") : "Model information unavailable";
 
         if (mergedCards.length === 0) {
           throw new Error("No flashcards were generated from this content");
@@ -1437,24 +1447,12 @@ function UploadPage({
             ? "image"
             : "mixed";
 
-        if (isMultiPart) {
-          setStatusText("");
-          showToast(
-            `Generated ${mergedCards.length} flashcards from ${uploadParts.length} parts!`,
-            PartyPopper
-          );
-        }
-
         onCardsReady(mergedCards, mergedTitle, mergedSummary, sourceType);
         mascotSay("Ta-da! Your flashcards are ready — open your new study set and let's go! 🎉", "wave");
-        // If the AI had to switch models (its rate limit was hit, or the model
-        // isn't available) the server says so — that's worth showing instead of
-        // the plain success toast.
-        if (mergedNotice && !isMultiPart) {
-          showToast(mergedNotice, TriangleAlert);
-        } else if (!isMultiPart) {
-          showToast(`Generated ${mergedCards.length} flashcards!`, PartyPopper);
-        }
+        showToast(
+          `Generated ${mergedCards.length} flashcards · Model used: ${modelLabel}`,
+          PartyPopper
+        );
       } else {
         if (!textInput.trim()) { setError("Please enter some text to study"); setLoading(false); return; }
         mascotEvent({ type: "generating" });
@@ -1466,11 +1464,13 @@ function UploadPage({
         setUploadProgress({ stage: "creating", percent: null });
         onCardsReady(result.cards || [], result.title || "Study Set", result.summary || "", sourceType);
         mascotSay("Ta-da! Your flashcards are ready — open your new study set and let's go! 🎉", "wave");
-        if (result.notice) {
-          showToast(result.notice, TriangleAlert);
-        } else {
-          showToast(`Generated ${(result.cards || []).length} flashcards!`, PartyPopper);
-        }
+        const modelLabel = result.model
+          ? `${result.provider ? `${result.provider}: ` : ""}${result.model}`
+          : "Model information unavailable";
+        showToast(
+          `Generated ${(result.cards || []).length} flashcards · Model used: ${modelLabel}`,
+          PartyPopper
+        );
       }
     } catch (err) {
       setError((err as Error).message);
