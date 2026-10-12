@@ -1096,6 +1096,7 @@ function UploadPage({
   const handleSubmit = async () => {
     setError("");
     setStatusText("");
+    setUploadProgress(null);
     setUploadProgress({ stage: "preparing", percent: null });
     setLoading(true);
 
@@ -1847,14 +1848,14 @@ function GeneratedDeckReview({
   cards: initialCards,
   title: initialTitle,
   summary: initialSummary,
-  onContinue,
+  onSave,
   onCancel,
 }: {
   cards: Flashcard[];
   title: string;
   summary: string;
-  onContinue: (cards: Flashcard[], title: string, summary: string) => void;
-  onCancel: () => void;
+  onSave: (cards: Flashcard[], title: string, summary: string) => Promise<void>;
+  onCancel: (cards: Flashcard[], title: string, summary: string) => void;
 }) {
   type ReviewCard = Flashcard & { reviewKey: string };
   const keyPrefix = useId();
@@ -1865,6 +1866,7 @@ function GeneratedDeckReview({
   const [title, setTitle] = useState(initialTitle);
   const [summary, setSummary] = useState(initialSummary);
   const [validationError, setValidationError] = useState("");
+  const [saving, setSaving] = useState(false);
 
   const duplicateKeys = cards
     .map((card) =>
@@ -1893,24 +1895,25 @@ function GeneratedDeckReview({
     );
   };
 
-  const handleContinue = () => {
+  const getReviewedDeck = (): { cards: Flashcard[]; title: string; summary: string } | null => {
     if (!title.trim()) {
       setValidationError("Add a title for this study set.");
-      return;
+      return null;
     }
     if (cards.length === 0) {
       setValidationError("Keep at least one card in your study set.");
-      return;
+      return null;
     }
     const incompleteIndex = cards.findIndex(
       (card) => !card.question.trim() || !card.answer.trim()
     );
     if (incompleteIndex >= 0) {
       setValidationError(`Card ${incompleteIndex + 1} needs both a question and an answer.`);
-      return;
+      return null;
     }
-    onContinue(
-      cards.map((card, orderIndex) => {
+    setValidationError("");
+    return {
+      cards: cards.map((card, orderIndex) => {
         const { reviewKey: _key, ...reviewedCard } = card;
         return {
           ...reviewedCard,
@@ -1920,15 +1923,44 @@ function GeneratedDeckReview({
           orderIndex,
         };
       }),
-      title.trim(),
-      summary.trim()
-    );
+      title: title.trim(),
+      summary: summary.trim(),
+    };
+  };
+
+  const handleSave = async () => {
+    const reviewedDeck = getReviewedDeck();
+    if (!reviewedDeck) return;
+    setSaving(true);
+    try {
+      await onSave(reviewedDeck.cards, reviewedDeck.title, reviewedDeck.summary);
+    } catch (error) {
+      setValidationError(error instanceof Error ? error.message : "Couldn't save this study set.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleCancel = () => {
+    const reviewedDeck = getReviewedDeck();
+    if (reviewedDeck) {
+      onCancel(reviewedDeck.cards, reviewedDeck.title, reviewedDeck.summary);
+    } else {
+      onCancel(
+        cards.map((card, orderIndex) => {
+          const { reviewKey: _key, ...draftCard } = card;
+          return { ...draftCard, orderIndex };
+        }),
+        title,
+        summary
+      );
+    }
   };
 
   return (
     <div className="generated-review animate-fade-in">
       <div className="generated-review-header">
-        <button type="button" className="btn btn-ghost btn-sm" onClick={onCancel}>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={handleCancel} disabled={saving}>
           <ArrowLeft />
           Back to upload
         </button>
@@ -1940,7 +1972,7 @@ function GeneratedDeckReview({
         <span className="generated-review-icon"><Sparkles size={20} aria-hidden /></span>
         <div>
           <h2>Review your flashcards</h2>
-          <p>Check the AI-generated cards, make any changes, then continue to study or save.</p>
+          <p>Check and edit your AI-generated cards before saving this study set.</p>
         </div>
       </div>
 
@@ -2062,10 +2094,10 @@ function GeneratedDeckReview({
       )}
 
       <div className="generated-review-actions">
-        <button type="button" className="btn btn-secondary" onClick={onCancel}>Back to upload</button>
-        <button type="button" className="btn btn-primary" onClick={handleContinue}>
-          Continue to study
-          <ArrowRight size={18} aria-hidden />
+        <button type="button" className="btn btn-secondary" onClick={handleCancel} disabled={saving}>Back to study</button>
+        <button type="button" className="btn btn-primary" onClick={() => void handleSave()} disabled={saving}>
+          {saving ? "Saving..." : "Save study set"}
+          {!saving && <Save size={18} aria-hidden />}
         </button>
       </div>
     </div>
@@ -3774,7 +3806,7 @@ function QuizPage({
   online: boolean;
   /** This deck was loaded from the device cache rather than the server. */
   offlineDeck?: boolean;
-  onSave?: (title: string) => Promise<void>;
+  onSave?: (title: string) => Promise<boolean | void>;
   onBack: () => void;
   /** Open the deck editor for this saved deck (rename / add / edit / reorder cards). */
   onEditDeck?: () => void;
@@ -4223,9 +4255,11 @@ function QuizPage({
     if (!onSave || saved) return;
     setSaving(true);
     try {
-      await onSave(title);
-      setSaved(true);
-      showToast("Study set saved!", CircleCheckBig);
+      const savedNow = await onSave(title);
+      if (savedNow !== false) {
+        setSaved(true);
+        showToast("Study set saved!", CircleCheckBig);
+      }
     } catch (error) {
       // Offline, the save handler explains that a connection is needed
       // ("your cards are kept as a draft") — pass that message through.
@@ -4348,7 +4382,7 @@ function QuizPage({
             {saving ? "..." : (
               <>
                 <Save />
-                Save
+                Review & save
               </>
             )}
           </button>
@@ -7952,7 +7986,7 @@ export default function App() {
 
   const handleCardsReady = (cards: Flashcard[], title: string, summary: string, sourceType: string) => {
     setPendingCards(cards);
-    setPendingReview(true);
+    setPendingReview(false);
     setPendingTitle(title);
     setPendingSummary(summary);
     setPendingSourceType(sourceType);
@@ -7967,7 +8001,7 @@ export default function App() {
     persistDraft(deck);
   };
 
-  const handleReviewContinue = (cards: Flashcard[], title: string, summary: string) => {
+  const handleReviewCancel = (cards: Flashcard[], title: string, summary: string) => {
     setPendingCards(cards);
     setPendingTitle(title);
     setPendingSummary(summary);
@@ -7978,10 +8012,15 @@ export default function App() {
     persistDraft(deck);
   };
 
+  const handleRequestReviewBeforeSave = async () => {
+    setPendingReview(true);
+    return false;
+  };
+
   const resumeDraft = () => {
     if (!draft) return;
     setPendingCards(draft.cards);
-    setPendingReview(true);
+    setPendingReview(false);
     setPendingTitle(draft.title);
     setPendingSummary(draft.summary);
     setPendingSourceType(draft.sourceType);
@@ -7996,8 +8035,12 @@ export default function App() {
     showToast("Draft discarded", Trash);
   };
 
-  const handleSaveSession = async (title: string) => {
-    if (!pendingCards) return;
+  const handleSaveSession = async (
+    title: string,
+    cardsToSave = pendingCards,
+    summaryToSave = pendingSummary
+  ) => {
+    if (!cardsToSave) return;
     // Creating a set is a server-side operation (AI + Postgres ids): offline we
     // say so plainly instead of pretending. The draft itself is already safe in
     // localStorage, so nothing is lost.
@@ -8010,13 +8053,18 @@ export default function App() {
       body: JSON.stringify({
         title,
         sourceType: pendingSourceType,
-        cards: pendingCards,
+        summary: summaryToSave,
+        cards: cardsToSave,
       }),
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error);
     setActiveSessionId(data.session.id);
     setPendingCards(data.cards);
+    setPendingTitle(title);
+    setPendingSummary(summaryToSave);
+    setPendingReview(false);
+    setDeckKey((key) => key + 1);
     // Deck is in the database now — the draft has served its purpose.
     setDraft(null);
     persistDraft(null);
@@ -8202,12 +8250,8 @@ export default function App() {
             cards={pendingCards}
             title={pendingTitle}
             summary={pendingSummary}
-            onContinue={handleReviewContinue}
-            onCancel={() => {
-              setPendingReview(false);
-              setPendingCards(null);
-              setTab("upload");
-            }}
+            onSave={(cards, title, summary) => handleSaveSession(title, cards, summary)}
+            onCancel={handleReviewCancel}
           />
         );
       }
@@ -8226,7 +8270,7 @@ export default function App() {
           baselineAccuracy={weakSpotBaselineAccuracy ?? undefined}
           online={online}
           offlineDeck={activeSessionOffline}
-          onSave={!isViewingSession && !weakSpotPractice ? handleSaveSession : undefined}
+          onSave={!isViewingSession && !weakSpotPractice ? handleRequestReviewBeforeSave : undefined}
           onEditDeck={
             isViewingSession && activeSessionId !== null
               ? () => {
