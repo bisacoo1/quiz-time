@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback, useMemo, type ReactNode } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, useId, type ReactNode } from "react";
 import { useSession, signIn, signOut } from "next-auth/react";
 import { LoginPage } from "@/components/login-page";
 import { AiTutor } from "@/components/ai-tutor";
@@ -1839,6 +1839,235 @@ function UploadPage({
           )}
         </section>
       )}
+    </div>
+  );
+}
+
+function GeneratedDeckReview({
+  cards: initialCards,
+  title: initialTitle,
+  summary: initialSummary,
+  onContinue,
+  onCancel,
+}: {
+  cards: Flashcard[];
+  title: string;
+  summary: string;
+  onContinue: (cards: Flashcard[], title: string, summary: string) => void;
+  onCancel: () => void;
+}) {
+  type ReviewCard = Flashcard & { reviewKey: string };
+  const keyPrefix = useId();
+  const keySequence = useRef(initialCards.length);
+  const [cards, setCards] = useState<ReviewCard[]>(() =>
+    initialCards.map((card, index) => ({ ...card, reviewKey: `${keyPrefix}-${index}` }))
+  );
+  const [title, setTitle] = useState(initialTitle);
+  const [summary, setSummary] = useState(initialSummary);
+  const [validationError, setValidationError] = useState("");
+
+  const duplicateKeys = cards
+    .map((card) =>
+      `${card.question.trim().toLocaleLowerCase()}|${card.answer.trim().toLocaleLowerCase()}`
+    )
+    .filter((key) => key !== "|");
+  const duplicateCount = duplicateKeys.length - new Set(duplicateKeys).size;
+
+  const updateCard = (reviewKey: string, patch: Partial<Flashcard>) => {
+    setCards((current) =>
+      current.map((card) => (card.reviewKey === reviewKey ? { ...card, ...patch } : card))
+    );
+    setValidationError("");
+  };
+
+  const removeDuplicates = () => {
+    const seen = new Set<string>();
+    setCards((current) =>
+      current.filter((card) => {
+        const key = `${card.question.trim().toLocaleLowerCase()}|${card.answer.trim().toLocaleLowerCase()}`;
+        if (key === "|") return true;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+    );
+  };
+
+  const handleContinue = () => {
+    if (!title.trim()) {
+      setValidationError("Add a title for this study set.");
+      return;
+    }
+    if (cards.length === 0) {
+      setValidationError("Keep at least one card in your study set.");
+      return;
+    }
+    const incompleteIndex = cards.findIndex(
+      (card) => !card.question.trim() || !card.answer.trim()
+    );
+    if (incompleteIndex >= 0) {
+      setValidationError(`Card ${incompleteIndex + 1} needs both a question and an answer.`);
+      return;
+    }
+    onContinue(
+      cards.map((card, orderIndex) => {
+        const { reviewKey: _key, ...reviewedCard } = card;
+        return {
+          ...reviewedCard,
+          question: card.question.trim(),
+          answer: card.answer.trim(),
+          hint: card.hint?.trim() || null,
+          orderIndex,
+        };
+      }),
+      title.trim(),
+      summary.trim()
+    );
+  };
+
+  return (
+    <div className="generated-review animate-fade-in">
+      <div className="generated-review-header">
+        <button type="button" className="btn btn-ghost btn-sm" onClick={onCancel}>
+          <ArrowLeft />
+          Back to upload
+        </button>
+        <span className="generated-review-count">
+          {cards.length} card{cards.length === 1 ? "" : "s"}
+        </span>
+      </div>
+      <div className="generated-review-intro">
+        <span className="generated-review-icon"><Sparkles size={20} aria-hidden /></span>
+        <div>
+          <h2>Review your flashcards</h2>
+          <p>Check the AI-generated cards, make any changes, then continue to study or save.</p>
+        </div>
+      </div>
+
+      <section className="glass-card generated-review-details" aria-label="Study set details">
+        <label className="generated-review-label" htmlFor="generated-deck-title">Study set title</label>
+        <input
+          id="generated-deck-title"
+          className="clay-input"
+          value={title}
+          onChange={(event) => setTitle(event.target.value)}
+          onFocus={editorFocus}
+          onBlur={editorBlur}
+          maxLength={120}
+          placeholder="Study set title"
+        />
+        <label className="generated-review-label" htmlFor="generated-deck-summary">
+          Description <span>(optional)</span>
+        </label>
+        <textarea
+          id="generated-deck-summary"
+          className="clay-textarea"
+          value={summary}
+          onChange={(event) => setSummary(event.target.value)}
+          onFocus={editorFocus}
+          onBlur={editorBlur}
+          maxLength={500}
+          rows={2}
+          placeholder="Short description of this study set"
+        />
+      </section>
+
+      <div className="generated-review-cards-heading">
+        <h3>Cards to review</h3>
+        {duplicateCount > 0 && (
+          <button type="button" className="btn btn-secondary btn-sm" onClick={removeDuplicates}>
+            Remove {duplicateCount} duplicate{duplicateCount === 1 ? "" : "s"}
+          </button>
+        )}
+      </div>
+
+      <div className="generated-review-cards">
+        {cards.map((card, index) => (
+          <article key={card.reviewKey} className="glass-card generated-review-card">
+            <div className="generated-review-card-heading">
+              <span className="badge">Card {index + 1}</span>
+              <select
+                value={card.difficulty || "medium"}
+                onChange={(event) => updateCard(card.reviewKey, { difficulty: event.target.value })}
+                aria-label={`Difficulty for card ${index + 1}`}
+              >
+                <option value="easy">Easy</option>
+                <option value="medium">Medium</option>
+                <option value="hard">Hard</option>
+              </select>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm generated-review-delete"
+                onClick={() => setCards((current) => current.filter((item) => item.reviewKey !== card.reviewKey))}
+                aria-label={`Remove card ${index + 1}`}
+              >
+                <Trash size={17} aria-hidden />
+                Remove
+              </button>
+            </div>
+            <label className="generated-review-label" htmlFor={`review-question-${card.reviewKey}`}>Question</label>
+            <textarea
+              id={`review-question-${card.reviewKey}`}
+              className="clay-textarea generated-review-field"
+              value={card.question}
+              onChange={(event) => updateCard(card.reviewKey, { question: event.target.value })}
+              onFocus={editorFocus}
+              onBlur={editorBlur}
+              rows={2}
+              placeholder="Question"
+            />
+            <label className="generated-review-label" htmlFor={`review-answer-${card.reviewKey}`}>Answer</label>
+            <textarea
+              id={`review-answer-${card.reviewKey}`}
+              className="clay-textarea generated-review-field"
+              value={card.answer}
+              onChange={(event) => updateCard(card.reviewKey, { answer: event.target.value })}
+              onFocus={editorFocus}
+              onBlur={editorBlur}
+              rows={2}
+              placeholder="Answer"
+            />
+            <label className="generated-review-label" htmlFor={`review-hint-${card.reviewKey}`}>
+              Hint <span>(optional)</span>
+            </label>
+            <input
+              id={`review-hint-${card.reviewKey}`}
+              className="clay-input"
+              value={card.hint ?? ""}
+              onChange={(event) => updateCard(card.reviewKey, { hint: event.target.value })}
+              onFocus={editorFocus}
+              onBlur={editorBlur}
+              placeholder="Add a hint"
+            />
+          </article>
+        ))}
+      </div>
+
+      <button
+        type="button"
+        className="btn btn-secondary generated-review-add"
+        onClick={() =>
+          setCards((current) => [
+            ...current,
+            { reviewKey: `${keyPrefix}-${++keySequence.current}`, question: "", answer: "", hint: "", difficulty: "medium" },
+          ])
+        }
+      >
+        <Plus size={18} aria-hidden />
+        Add a card
+      </button>
+
+      {validationError && (
+        <p className="generated-review-error" role="alert">{validationError}</p>
+      )}
+
+      <div className="generated-review-actions">
+        <button type="button" className="btn btn-secondary" onClick={onCancel}>Back to upload</button>
+        <button type="button" className="btn btn-primary" onClick={handleContinue}>
+          Continue to study
+          <ArrowRight size={18} aria-hidden />
+        </button>
+      </div>
     </div>
   );
 }
@@ -7392,6 +7621,7 @@ function IOSInstallPrompt() {
 export default function App() {
   const [tab, setTab] = useState<Tab>("home");
   const [pendingCards, setPendingCards] = useState<Flashcard[] | null>(null);
+  const [pendingReview, setPendingReview] = useState(false);
   const [pendingTitle, setPendingTitle] = useState("");
   const [pendingSummary, setPendingSummary] = useState("");
   const [pendingSourceType, setPendingSourceType] = useState("text");
@@ -7722,6 +7952,7 @@ export default function App() {
 
   const handleCardsReady = (cards: Flashcard[], title: string, summary: string, sourceType: string) => {
     setPendingCards(cards);
+    setPendingReview(true);
     setPendingTitle(title);
     setPendingSummary(summary);
     setPendingSourceType(sourceType);
@@ -7736,9 +7967,21 @@ export default function App() {
     persistDraft(deck);
   };
 
+  const handleReviewContinue = (cards: Flashcard[], title: string, summary: string) => {
+    setPendingCards(cards);
+    setPendingTitle(title);
+    setPendingSummary(summary);
+    setPendingReview(false);
+    setDeckKey((key) => key + 1);
+    const deck: PendingDeck = { cards, title, summary, sourceType: pendingSourceType };
+    setDraft(deck);
+    persistDraft(deck);
+  };
+
   const resumeDraft = () => {
     if (!draft) return;
     setPendingCards(draft.cards);
+    setPendingReview(true);
     setPendingTitle(draft.title);
     setPendingSummary(draft.summary);
     setPendingSourceType(draft.sourceType);
@@ -7952,6 +8195,22 @@ export default function App() {
     }
 
     if (tab === "quiz") {
+      if (pendingReview && pendingCards) {
+        return (
+          <GeneratedDeckReview
+            key={deckKey}
+            cards={pendingCards}
+            title={pendingTitle}
+            summary={pendingSummary}
+            onContinue={handleReviewContinue}
+            onCancel={() => {
+              setPendingReview(false);
+              setPendingCards(null);
+              setTab("upload");
+            }}
+          />
+        );
+      }
       const cards = isViewingSession ? activeSessionCards! : pendingCards!;
       const title = isViewingSession ? activeSessionTitle : pendingTitle;
       const summary = isViewingSession ? activeSessionSummary : pendingSummary;
@@ -8364,6 +8623,7 @@ export default function App() {
             onClick={() => {
               setTab(id);
               setPendingCards(null);
+              setPendingReview(false);
               setActiveSessionCards(null);
               setDeckEditor(null);
               setSubjectView(null);

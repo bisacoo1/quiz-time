@@ -19,6 +19,10 @@ QuizTime turns them into flashcards, then lets you review them four ways:
 - **AI Tutor** – after revealing or answering a card, ask for a plain-language
   explanation, a brief example, or a follow-up grounded in that card. The tutor
   uses the configured AI provider and requires an internet connection.
+- **Generated card review** – after AI generation, review and edit the study
+  set title, description, card questions, answers, hints and difficulty before
+  studying. Add or remove cards, remove exact duplicate question-and-answer
+  pairs, and keep the reviewed set as a draft until you save it.
 - **Weak spots** – Study Stats highlights cards answered incorrectly at least
   twice, puts recent misses first, and removes a card after two consecutive
   correct answers. Cards link back to their study sets, making recurring
