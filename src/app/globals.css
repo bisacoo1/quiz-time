@@ -1031,6 +1031,14 @@ h1, h2, h3 {
   gap: 10px;
 }
 
+.generated-review-card-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
 .generated-review-card-heading {
   justify-content: flex-start;
   margin-bottom: 12px;
@@ -1094,6 +1102,15 @@ h1, h2, h3 {
     justify-content: center;
     padding-inline: 10px;
     font-size: 12px;
+  }
+
+  .generated-review-cards-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .generated-review-card-tools {
+    justify-content: flex-start;
   }
 }
 
