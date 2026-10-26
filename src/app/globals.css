@@ -2147,22 +2147,15 @@ h1, h2, h3 {
 .mascot-avatar.mascot-anim-bounce img {
   animation: mascot-bounce 0.55s ease-in-out infinite, mascot-pose-in 220ms ease-out both;
 }
-.mascot-avatar.mascot-anim-spin img {
-  animation: mascot-spin 0.85s ease-in-out infinite, mascot-pose-in 220ms ease-out both;
+.mascot-avatar.mascot-anim-sway img {
+  animation: mascot-sway 2.4s ease-in-out infinite, mascot-pose-in 220ms ease-out both;
 }
 .mascot-avatar.mascot-anim-dance img {
-  animation: mascot-dance 0.5s ease-in-out infinite, mascot-pose-in 220ms ease-out both;
-}
-.mascot-avatar.mascot-anim-flip img {
-  animation: mascot-flip 1.05s ease-in-out infinite, mascot-pose-in 220ms ease-out both;
+  animation: mascot-dance 1.2s ease-in-out infinite, mascot-pose-in 220ms ease-out both;
 }
 
 .mascot-wrap {
-  /* One scale for the character, bubble pointer, and half-hidden peek.
-     Sized like a typical in-app mascot companion: big enough to read as a
-     character, not a chat bubble. Phones and short screens scale below. */
-  --mascot-size: 208px;
-  --mascot-edge: 14px;
+  /* Keep the companion compact so it doesn't compete with the study content. */
   position: fixed;
   right: var(--mascot-edge);
   bottom: calc(88px + env(safe-area-inset-bottom, 0px));
@@ -2297,34 +2290,143 @@ h1, h2, h3 {
   margin-top: 10px;
 }
 
-.mascot-message-actions {
+.mascot-host {
+  --mascot-size: 148px;
+  --mascot-edge: 14px;
+}
+
+.mascot-settings-anchor {
+  position: fixed;
+  right: 14px;
+  bottom: calc(80px + env(safe-area-inset-bottom, 0px));
+  z-index: 92;
+  pointer-events: none;
+}
+
+.mascot-settings-trigger {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: white;
+  color: var(--text-secondary);
+  box-shadow: var(--shadow-md);
+  cursor: pointer;
+  pointer-events: auto;
+  transition: color 0.16s ease, background 0.16s ease, transform 0.16s ease;
+}
+
+.mascot-settings-trigger:hover {
+  color: var(--primary);
+  background: var(--primary-soft);
+  transform: rotate(12deg);
+}
+
+.mascot-settings-trigger:focus-visible,
+.mascot-setting-switch:focus-visible {
+  outline: 3px solid var(--primary);
+  outline-offset: 3px;
+}
+
+.mascot-settings {
+  position: absolute;
+  right: calc(100% + var(--mascot-size) + 24px);
+  bottom: calc(100% + var(--mascot-size) + 24px);
+  width: min(300px, calc(100vw - 32px));
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: white;
+  box-shadow: var(--shadow-lg);
+  pointer-events: auto;
+  animation: mascot-pop-in 0.22s ease-out both;
+}
+
+.mascot-settings-heading {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-height: 24px;
+  padding-right: 30px;
+  margin-bottom: 8px;
+}
+
+.mascot-settings-heading h2 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.mascot-settings-heading .mascot-close {
+  top: 0;
+  right: 0;
+}
+
+.mascot-setting-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  margin-top: 6px;
+  gap: 12px;
+  padding: 11px 0;
+  border-top: 1px solid var(--border-light);
 }
 
-.mascot-preference {
-  padding: 2px 0;
-  border: 0;
-  background: transparent;
+.mascot-setting-row > span {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.mascot-setting-row strong {
+  color: var(--text-primary);
+  font-size: 13px;
+}
+
+.mascot-setting-row small {
   color: var(--text-muted);
-  font: inherit;
   font-size: 11px;
+  line-height: 1.4;
+}
+
+.mascot-setting-switch {
+  position: relative;
+  width: 40px;
+  height: 24px;
+  flex: 0 0 auto;
+  padding: 3px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--gray-300);
   cursor: pointer;
+  transition: background 0.16s ease;
 }
 
-.mascot-preference:hover,
-.mascot-preference:focus-visible {
-  color: var(--primary);
-  text-decoration: underline;
+.mascot-setting-switch.on {
+  background: var(--primary);
 }
 
-.mascot-message-actions [role="alert"] {
+.mascot-setting-switch span {
+  display: block;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: white;
+  box-shadow: var(--shadow-xs);
+  transition: transform 0.16s ease;
+}
+
+.mascot-setting-switch.on span {
+  transform: translateX(16px);
+}
+
+.mascot-settings-error {
+  margin: 8px 0 0;
   color: var(--danger-text);
-  font-size: 11px;
-  text-align: right;
+  font-size: 12px;
 }
 
 .mascot-caret {
@@ -2410,10 +2512,17 @@ h1, h2, h3 {
 }
 
 @media (max-width: 480px) {
-  .mascot-wrap {
-    --mascot-size: 156px;
+  .mascot-host {
+    --mascot-size: 112px;
     --mascot-edge: 10px;
+  }
+
+  .mascot-wrap {
     bottom: calc(78px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .mascot-settings {
+    right: 0;
   }
 
   .mascot-inline-img {
@@ -2426,8 +2535,11 @@ h1, h2, h3 {
    the phone's bottom clearance (short landscape is almost always a phone
    held sideways — still clears the 72px bottom navigation). */
 @media (max-height: 480px) {
+  .mascot-host {
+    --mascot-size: 88px;
+  }
+
   .mascot-wrap {
-    --mascot-size: 112px;
     bottom: calc(78px + env(safe-area-inset-bottom, 0px));
   }
 
@@ -2435,6 +2547,20 @@ h1, h2, h3 {
     box-sizing: border-box;
     max-height: calc(100dvh - 78px - var(--mascot-size) - 24px - env(safe-area-inset-bottom, 0px));
     overflow-y: auto;
+  }
+
+  .mascot-settings {
+    right: calc(100% + var(--mascot-size) + 24px);
+    bottom: calc(100% + 10px);
+    max-height: calc(100dvh - 100px);
+    overflow-y: auto;
+  }
+}
+
+@media (max-height: 480px) and (max-width: 480px) {
+  .mascot-settings {
+    right: 0;
+    bottom: calc(100% + 70px);
   }
 }
 
@@ -2820,9 +2946,22 @@ body.maintenance-active {
 /* ── Mascot keyframes ──────────────────────────────────────────────────────── */
 @keyframes mascot-bob { 0%,100% { transform: translateY(0) rotate(-1deg); } 50% { transform: translateY(-4px) rotate(1deg); } }
 @keyframes mascot-bounce { 0%,100% { transform: translateY(0) scale(1); } 30% { transform: translateY(-8px) scale(1.03); } 60% { transform: translateY(0) scale(0.97); } 80% { transform: translateY(-3px) scale(1.01); } }
-@keyframes mascot-spin { 0% { transform: rotate(0deg) scale(1); } 50% { transform: rotate(180deg) scale(1.06); } 100% { transform: rotate(360deg) scale(1); } }
-@keyframes mascot-dance { 0%,100% { transform: rotate(-6deg) translateY(0); } 50% { transform: rotate(6deg) translateY(-4px); } }
-@keyframes mascot-flip { 0% { transform: scaleX(1); } 50% { transform: scaleX(-1) translateY(-2px); } 100% { transform: scaleX(1); } }
+@keyframes mascot-dance {
+  0%, 100% { transform: translateY(0) rotate(0) scale(1); }
+  12% { transform: translateY(-3px) rotate(-5deg) scale(1.015, 0.99); }
+  25% { transform: translateY(0) rotate(0) scale(1.035, 0.965); }
+  38% { transform: translateY(-3px) rotate(5deg) scale(1.015, 0.99); }
+  50% { transform: translateY(-1px) rotate(0) scale(1, 1.01); }
+  62% { transform: translateY(-3px) rotate(-5deg) scale(1.015, 0.99); }
+  75% { transform: translateY(0) rotate(0) scale(1.035, 0.965); }
+  88% { transform: translateY(-3px) rotate(5deg) scale(1.015, 0.99); }
+}
+@keyframes mascot-sway {
+  0%, 100% { transform: translateY(0) rotate(0) scale(1); }
+  25% { transform: translateY(-2px) rotate(-1deg) scale(1.005); }
+  50% { transform: translateY(0) rotate(0) scale(1); }
+  75% { transform: translateY(-1px) rotate(1deg) scale(1.005); }
+}
 
 /* Reduced motion */
 @media (prefers-reduced-motion: reduce) {

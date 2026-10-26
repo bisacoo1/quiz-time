@@ -48,7 +48,14 @@ export type MascotEvent =
   /** Study Mode run finished — knownPct = share of cards marked known. */
   | { type: "study-done"; knownPct: number }
   /** A scored run finished (exam / identification / enumeration). */
-  | { type: "scored-done"; mode: "exam" | "identify" | "enumerate"; pct: number }
+  | {
+      type: "scored-done";
+      mode: "exam" | "identify" | "enumerate";
+      pct: number;
+      missedCount: number;
+      onStudyMissed: () => void;
+      onChooseMode: () => void;
+    }
   /** A spaced-repetition round finished — pct = first-try recall. */
   | { type: "review-done"; pct: number }
   /** Mid-run hot streak — n correct answers in a row in a scored run. */

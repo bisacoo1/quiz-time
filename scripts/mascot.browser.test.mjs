@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 
 function mascotSize(viewport) {
-  return viewport.height <= 480 ? 112 : viewport.width <= 480 ? 156 : 208;
+  return viewport.height <= 480 ? 88 : viewport.width <= 480 ? 112 : 148;
 }
 
 async function expectBubbleToFit(page) {
@@ -36,6 +36,9 @@ test("full-size character and aligned bubble fit every onboarding step", async (
   await expect(avatar).toHaveCSS("overflow", "visible");
   await expect(avatar).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
   await expect(avatar.locator("img")).toHaveCSS("object-fit", "contain");
+  await expect(avatar.locator(".mascot-flashcard, .mascot-study-badge, .mascot-sparkle")).toHaveCount(0);
+  await expect(avatar).toHaveCSS("background-image", "none");
+  await expect(avatar).toHaveCSS("box-shadow", "none");
   await expect.poll(() => avatar.locator("img").evaluate((img) => img.complete && img.naturalWidth > 0)).toBe(true);
 
   const tailOffset = await page.locator(".mascot-bubble").evaluate((bubble) => {
@@ -108,14 +111,32 @@ test("celebration and thinking poses keep the same character size", async ({ pag
   await expect(page.locator(".mascot-thought")).toBeAttached();
 });
 
+test("identification celebration uses the rhythmic dance animation", async ({ page }) => {
+  const avatar = page.locator(".mascot-avatar");
+  const image = avatar.locator("img");
+
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await page.getByRole("button", { name: "Skip tour", exact: true }).click();
+  await page.getByRole("button", { name: /Identification · 65%/ }).click();
+
+  await expect(avatar).toHaveClass(/mascot-anim-dance/);
+  await expect.poll(() => image.evaluate((element) => getComputedStyle(element).animationName)).toContain(
+    "mascot-dance"
+  );
+  await expect.poll(() => image.evaluate((element) => getComputedStyle(element).animationDuration)).toContain(
+    "1.2s"
+  );
+});
+
 test("reduced pop-up preference persists and keeps study feedback", async ({ page }) => {
   await page.getByRole("button", { name: "Skip tour", exact: true }).click();
   await page.getByRole("button", { name: /5-in-a-row streak/ }).click();
-  await page.getByRole("button", { name: "Show fewer pop-ups", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Show all mascot messages", exact: true })).toHaveAttribute(
-    "aria-pressed",
-    "true"
-  );
+  await page.getByRole("button", { name: "Nibbles settings" }).click();
+  const fewerPopups = page.getByRole("switch", { name: "Fewer mascot pop-ups" });
+  await expect(fewerPopups).toHaveAttribute("aria-checked", "false");
+  await fewerPopups.click();
+  await expect(fewerPopups).toHaveAttribute("aria-checked", "true");
+  await page.getByRole("button", { name: "Close Nibbles settings" }).click();
 
   await page.getByRole("button", { name: "Dismiss Nibbles", exact: true }).click();
   await page.getByRole("button", { name: /5-in-a-row streak/ }).click();
@@ -126,7 +147,45 @@ test("reduced pop-up preference persists and keeps study feedback", async ({ pag
   await expect(page.locator(".mascot-bubble")).toBeHidden();
 
   await page.getByRole("button", { name: /Study finished · 92%/ }).click();
-  await expect(page.getByRole("button", { name: "Show all mascot messages", exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Open Spaced Review", exact: true })).toBeVisible();
+});
+
+test("show or hide Nibbles stays available from persistent settings", async ({ page }) => {
+  await page.getByRole("button", { name: "Skip tour", exact: true }).click();
+  await page.getByRole("button", { name: "Nibbles settings" }).click();
+  const showNibbles = page.getByRole("switch", { name: "Show Nibbles" });
+  await expect(showNibbles).toHaveAttribute("aria-checked", "true");
+  await showNibbles.click();
+  await expect(showNibbles).toHaveAttribute("aria-checked", "false");
+  await expect(page.locator(".mascot-avatar")).toBeHidden();
+
+  await page.reload();
+  await page.getByRole("button", { name: "Nibbles settings" }).click();
+  const restoredSwitch = page.getByRole("switch", { name: "Show Nibbles" });
+  await expect(restoredSwitch).toHaveAttribute("aria-checked", "false");
+  await restoredSwitch.click();
+  await expect(restoredSwitch).toHaveAttribute("aria-checked", "true");
+  await page.getByRole("button", { name: "Close Nibbles settings" }).click();
+  await page.getByRole("button", { name: /5-in-a-row streak/ }).click();
+  await expect(page.locator(".mascot-bubble")).toBeVisible();
+});
+
+test("settings stay reachable and fit the viewport when Nibbles is hidden", async ({ page }) => {
+  await page.getByRole("button", { name: "Skip tour", exact: true }).click();
+  await page.getByRole("button", { name: "Nibbles settings" }).click();
+  await page.getByRole("switch", { name: "Show Nibbles" }).click();
+
+  const settings = page.locator("#mascot-settings");
+  await expect(settings).toBeVisible();
+  const box = await settings.boundingBox();
+  const viewport = page.viewportSize();
+  expect(box.x).toBeGreaterThanOrEqual(0);
+  expect(box.y).toBeGreaterThanOrEqual(0);
+  expect(box.x + box.width).toBeLessThanOrEqual(viewport.width);
+  expect(box.y + box.height).toBeLessThanOrEqual(viewport.height);
+
+  await page.keyboard.press("Escape");
+  await expect(settings).toBeHidden();
 });
 
 test("completion messages offer relevant next steps", async ({ page }) => {
@@ -146,6 +205,15 @@ test("completion messages offer relevant next steps", async ({ page }) => {
   );
 });
 
+test("missed-card prompt launches its exact study action", async ({ page }) => {
+  await page.getByRole("button", { name: "Skip tour", exact: true }).click();
+  await page.getByRole("button", { name: /Exam · missed cards/ }).click();
+  const action = page.getByRole("button", { name: "Study 2 missed cards", exact: true });
+  await expect(action).toBeVisible();
+  await action.click();
+  await expect(page.getByText("Let’s study those missed cards now!", { exact: true })).toBeVisible();
+});
+
 test("mascot breathing and pose transitions respect reduced motion", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "no-preference" });
   const avatar = page.locator(".mascot-avatar");
@@ -159,9 +227,13 @@ test("mascot breathing and pose transitions respect reduced motion", async ({ pa
   await avatar.evaluate((element) => element.classList.remove("mascot-idle"));
   await page.getByRole("button", { name: "Skip tour", exact: true }).click();
   await page.getByRole("button", { name: /Study finished · 92%/ }).click();
-  await expect.poll(() => image.evaluate((element) => getComputedStyle(element).animationName)).toContain(
-    "mascot-flip"
-  );
+  await expect(avatar).toHaveClass(/mascot-anim-sway/);
+  await expect(avatar).not.toHaveClass(/mascot-anim-(spin|flip)/);
+
+  await page.getByRole("button", { name: "Dismiss Nibbles", exact: true }).click();
+  await page.getByRole("button", { name: /Exam · 70%/ }).click();
+  await expect(avatar).toHaveClass(/mascot-anim-sway/);
+  await expect(avatar).not.toHaveClass(/mascot-anim-(spin|flip)/);
 
   await page.emulateMedia({ reducedMotion: "reduce" });
   await expect.poll(() => image.evaluate((element) => getComputedStyle(element).animationName)).toBe("none");

@@ -4349,7 +4349,14 @@ function QuizPage({
     if (mode !== "exam" && mode !== "identify" && mode !== "enumerate") return;
     const correct = answers.filter((a) => a.isCorrect).length;
     const pct = answers.length ? Math.round((correct / answers.length) * 100) : 0;
-    mascotEvent({ type: "scored-done", mode, pct });
+    mascotEvent({
+      type: "scored-done",
+      mode,
+      pct,
+      missedCount: answers.filter((answer) => !answer.isCorrect).length,
+      onStudyMissed: handleStudyMissed,
+      onChooseMode: () => setMode("select"),
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [examDone]);
 
@@ -8738,7 +8745,11 @@ export default function App() {
 
       <ToastHost />
       {/* Nibbles — defined role: only shows in specific moments via MascotHost logic */}
-      <MascotHost userName={user?.name ?? null} userId={user?.id != null ? String(user.id) : null} />
+      <MascotHost
+        key={user?.id != null ? String(user.id) : "anon"}
+        userName={user?.name ?? null}
+        userId={user?.id != null ? String(user.id) : null}
+      />
     </div>
   );
 }

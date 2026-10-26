@@ -31,6 +31,20 @@ export default function HamsterPreview() {
     setMountKey((k) => k + 1);
   };
 
+  const scoredDoneDemo = (
+    mode: "exam" | "identify" | "enumerate",
+    pct: number,
+    missedCount = 0
+  ) =>
+    mascotEvent({
+      type: "scored-done",
+      mode,
+      pct,
+      missedCount,
+      onStudyMissed: () => mascotSay("Let’s study those missed cards now!", "point"),
+      onChooseMode: () => mascotSay("Choose a study mode to continue!", "point"),
+    });
+
   const demos: { label: string; run: () => void; hint?: string }[] = [
     { label: "👋 New-user greeting + tour", run: () => replayGreeting(true), hint: "Hello, <name>! + tutorial" },
     { label: "🔁 Welcome back", run: () => replayGreeting(false), hint: "Welcome back, <name>!" },
@@ -44,13 +58,18 @@ export default function HamsterPreview() {
       run: () => replayGreeting(false, "sad"),
       hint: "greeting, then a tearful streak speech",
     },
-    { label: "📖 Study finished · 92%", run: () => mascotEvent({ type: "study-done", knownPct: 92 }), hint: "card-FLIP + seed nibble + ⭐ burst" },
+    { label: "📖 Study finished · 92%", run: () => mascotEvent({ type: "study-done", knownPct: 92 }), hint: "gentle sway + seed nibble + ⭐ burst" },
     { label: "📖 Study finished · 40%", run: () => mascotEvent({ type: "study-done", knownPct: 40 }), hint: "gentle pep talk" },
-    { label: "📝 Exam · 96%", run: () => mascotEvent({ type: "scored-done", mode: "exam", pct: 96 }), hint: "SPIN + seed nibble + ⭐ burst" },
-    { label: "📝 Exam · 70%", run: () => mascotEvent({ type: "scored-done", mode: "exam", pct: 70 }), hint: "spin" },
-    { label: "⌨️ Identification · 65%", run: () => mascotEvent({ type: "scored-done", mode: "identify", pct: 65 }), hint: "happy DANCE" },
-    { label: "🔢 Enumeration · 100%", run: () => mascotEvent({ type: "scored-done", mode: "enumerate", pct: 100 }), hint: "hops + seed nibble + ⭐ burst" },
-    { label: "📉 Rough round · 35%", run: () => mascotEvent({ type: "scored-done", mode: "exam", pct: 35 }), hint: "encouragement, no confetti" },
+    { label: "📝 Exam · 96%", run: () => scoredDoneDemo("exam", 96), hint: "gentle sway + seed nibble + ⭐ burst" },
+    { label: "📝 Exam · 70%", run: () => scoredDoneDemo("exam", 70), hint: "gentle sway" },
+    {
+      label: "📝 Exam · missed cards",
+      run: () => scoredDoneDemo("exam", 65, 2),
+      hint: "The action button continues with the cards you missed",
+    },
+    { label: "⌨️ Identification · 65%", run: () => scoredDoneDemo("identify", 65), hint: "rhythmic two-step dance" },
+    { label: "🔢 Enumeration · 100%", run: () => scoredDoneDemo("enumerate", 100), hint: "hops + seed nibble + ⭐ burst" },
+    { label: "📉 Rough round · 35%", run: () => scoredDoneDemo("exam", 35), hint: "encouragement, no confetti" },
     { label: "🧠 Review round · 80%", run: () => mascotEvent({ type: "review-done", pct: 80 }), hint: "hops" },
     { label: "🌱 First run on a fresh deck", run: () => mascotEvent({ type: "first-run" }), hint: "wave / hop cheer for a brand-new deck" },
     { label: "🔥 5-in-a-row streak", run: () => mascotEvent({ type: "streak", n: 5 }), hint: "mid-run hop cheer (3 / 5 / 10+ in the real app)" },

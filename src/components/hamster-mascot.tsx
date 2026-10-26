@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { X } from "lucide-react";
+import { Settings2, X } from "lucide-react";
 import {
   MASCOT_IMAGES,
   registerMascotListener,
@@ -20,8 +20,8 @@ import {
    What he notices:
    • login            → "Hello, <name>!" tour for new users, or "Welcome
                         back, <name>!" for returning users
-   • finishing a deck → a celebration unique to that mode (bounce / spin /
-                        dance / card-flip); 90%+ makes him nibble a sunflower
+   • finishing a deck → a gentle happy sway or small bounce; 90%+ makes him
+                        nibble a sunflower
                         seed under a ⭐ burst, rough rounds get a pep talk
    • mid-run moments  → cheers 3 / 5 / 10+ answer streaks with star-eyed wow,
                         offers a little heart after 3 misses in a row, and
@@ -146,15 +146,13 @@ function generatingStep(): Step {
 }
 
 /**
- * Every study-mode finish gets its OWN celebration animation, so it never
- * feels the same twice: flips for Study, spins for Exam, a dance for
- * Identification, hops for Enumeration & Review. 90%+ makes Nibbles nibble
- * a sunflower seed under a ⭐ burst, and a rough round gets a pep talk
- * instead of confetti.
+ * Study and exam finishes use a gentle, natural sway rather than spinning or
+ * flipping the hamster art. Other modes keep their smaller celebration
+ * movements. 90%+ makes Nibbles nibble a sunflower seed under a ⭐ burst.
  */
 const FINISH_ANIM: Record<string, CelebrateAnim> = {
-  study: "flip",
-  exam: "spin",
+  study: "sway",
+  exam: "sway",
   identify: "dance",
   enumerate: "bounce",
   review: "bounce",
@@ -197,27 +195,41 @@ function completionLines(ev: MascotEvent, first: string): Step {
           : ev.mode === "identify"
             ? "Now move to another study mode: try Enumeration — list every item from memory!"
             : "Now move to another study mode: give Spaced Review a go — it resurfaces cards right before you forget them!";
+      const followUpLine =
+        ev.missedCount > 0
+          ? "Want a quick encore? Study the missed cards while they're fresh."
+          : nextLine;
+      const nextAction =
+        ev.missedCount > 0
+          ? {
+              label: `Study ${ev.missedCount} missed card${ev.missedCount === 1 ? "" : "s"}`,
+              onSelect: ev.onStudyMissed,
+            }
+          : { label: "Choose another mode", onSelect: ev.onChooseMode };
       if (ev.pct >= 90) {
         return {
           mood: "nibble",
           anim,
           burst: true,
-          action: { label: "Open Spaced Review", href: "/?tab=review" },
-          text: `WOW, ${first}! ${ev.pct}% on ${modeName} — superstar! 🎉⭐ ${nextLine}`,
+          action: nextAction,
+          text: `WOW, ${first}! ${ev.pct}% on ${modeName} — superstar! 🎉⭐ ${followUpLine}`,
         };
       }
       if (ev.pct >= 50) {
         return {
           mood: "celebrate",
           anim,
-          action: { label: "Open Spaced Review", href: "/?tab=review" },
-          text: `You did it, ${first}! ${ev.pct}% on ${modeName} 🎉 ${nextLine}`,
+          action: nextAction,
+          text: `You did it, ${first}! ${ev.pct}% on ${modeName} 🎉 ${followUpLine}`,
         };
       }
       return {
         mood: "point",
-        action: { label: "Open Spaced Review", href: "/?tab=review" },
-        text: `Tough round, ${first} — ${ev.pct}% this time. Every miss teaches you something! 🧠 Study the missed cards below, then come back and smash it!`,
+        action: nextAction,
+        text:
+          ev.missedCount > 0
+            ? `Tough round, ${first} — ${ev.pct}% this time. Every miss teaches you something! 🧠 Study the missed cards below, then come back and smash it!`
+            : `Tough round, ${first} — ${ev.pct}% this time. Every miss teaches you something! 🧠 ${nextLine}`,
       };
     }
     case "review-done":
@@ -280,7 +292,7 @@ const WAKE_LINES: Step[] = [
 
 // ─── Habit tracking helpers ───────────────────────────────────────────────
 
-type CelebrateAnim = "bounce" | "spin" | "dance" | "flip";
+type CelebrateAnim = "bounce" | "dance" | "sway";
 
 /** What the server knows about the account's study rhythm (/api/stats). */
 interface HabitData {
@@ -359,7 +371,9 @@ function writeHabitSnapshot(id: string, snapshot: HabitSnapshot) {
 interface Step {
   text: string;
   mood: MascotMood;
-  action?: { label: string; href: string };
+  action?:
+    | { label: string; href: string }
+    | { label: string; onSelect: () => void };
   /** Celebration animation to loop while this bubble is up. */
   anim?: CelebrateAnim;
   /** ⭐ burst particles for 90%+ finishes. */
@@ -380,11 +394,20 @@ const onboardKey = (id: string) => `quiztime-mascot-onboarded:${id}`;
 const greetKey = (id: string) => `quiztime-mascot-greeted:${id}`;
 /** Per-account setting for quieter ambient mascot messages. */
 const reducedPopupsKey = (id: string) => `quiztime-mascot-reduced-popups:${id}`;
+/** Per-account setting for hiding Nibbles while keeping the settings control. */
+const mascotHiddenKey = (id: string) => `quiztime-mascot-hidden:${id}`;
 function readReducedPopups(id: string): boolean {
   try {
     return typeof window !== "undefined" && window.localStorage.getItem(reducedPopupsKey(id)) === "1";
   } catch {
     return false;
+  }
+}
+function readMascotVisible(id: string): boolean {
+  try {
+    return typeof window === "undefined" || window.localStorage.getItem(mascotHiddenKey(id)) !== "1";
+  } catch {
+    return true;
   }
 }
 
@@ -406,8 +429,11 @@ export function MascotHost({
   const [bubble, setBubble] = useState<BubbleState | null>(null);
   const [shown, setShown] = useState(0);
   const [reducedPopups, setReducedPopups] = useState(() => readReducedPopups(userId ?? "anon"));
+  const [mascotVisible, setMascotVisible] = useState(() => readMascotVisible(userId ?? "anon"));
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [preferenceError, setPreferenceError] = useState<string | null>(null);
   const reducedPopupsRef = useRef(reducedPopups);
+  const mascotVisibleRef = useRef(mascotVisible);
   /** Ambient pose between bubbles — sleepy when away, thinking while generating. */
   const [ambient, setAmbient] = useState<"idle" | "sleepy" | "thinking">("idle");
   /** Sync read of the ambient pose for event handlers (no stale closures). */
@@ -433,6 +459,15 @@ export function MascotHost({
       window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   }, []);
 
+  useEffect(() => {
+    if (!settingsOpen) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setSettingsOpen(false);
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [settingsOpen]);
+
   const clearDismissTimer = () => {
     if (dismissTimer.current) {
       clearTimeout(dismissTimer.current);
@@ -447,6 +482,7 @@ export function MascotHost({
   };
 
   const show = useCallback((next: Omit<BubbleState, "key">) => {
+    if (!mascotVisibleRef.current) return;
     clearDismissTimer();
     clearChainTimer();
     keySeq.current += 1;
@@ -487,7 +523,7 @@ export function MascotHost({
     const timer = setTimeout(() => {
       void (async () => {
         if (cancelled) return;
-        if (reducedPopupsRef.current) return;
+        if (!mascotVisibleRef.current || reducedPopupsRef.current) return;
         let greet;
         let onboarded;
         try {
@@ -522,7 +558,7 @@ export function MascotHost({
               : { kind: "sad", lostStreak: Math.max(snap?.streak ?? 5, 2) };
         } else {
           const habit = await loadHabitData();
-          if (cancelled || reducedPopupsRef.current) return;
+          if (cancelled || !mascotVisibleRef.current || reducedPopupsRef.current) return;
           if (habit) {
             if (onboarded) moment = decideHabitMoment(habit, snap);
             writeHabitSnapshot(id, { streak: habit.streak, at: new Date().toISOString() });
@@ -547,6 +583,7 @@ export function MascotHost({
   useEffect(() => {
     const first = firstName(userName);
     return registerMascotListener((ev: MascotEvent) => {
+      if (!mascotVisibleRef.current) return;
       if (ev.type === "peek") {
         setPeeking(ev.active);
         return;
@@ -588,6 +625,7 @@ export function MascotHost({
   // ── Typewriter ──────────────────────────────────────────────────────────
   const active = bubble ? bubble.steps[bubble.index] : null;
   const fullText = active?.text ?? "";
+  const activeAction = active?.action;
   const typingDone = shown >= fullText.length;
 
   useEffect(() => {
@@ -663,6 +701,27 @@ export function MascotHost({
     }
   };
 
+  const toggleMascotVisible = () => {
+    const next = !mascotVisibleRef.current;
+    try {
+      window.localStorage.setItem(mascotHiddenKey(userId ?? "anon"), next ? "0" : "1");
+      mascotVisibleRef.current = next;
+      setMascotVisible(next);
+      setPreferenceError(null);
+      if (!next) {
+        clearDismissTimer();
+        clearChainTimer();
+        queuedStep.current = null;
+        bubbleVisible.current = false;
+        setBubble(null);
+        setPeeking(false);
+        setAmbientNow("idle");
+      }
+    } catch {
+      setPreferenceError("Couldn’t save this setting in your browser.");
+    }
+  };
+
   const mood: MascotMood = bubble && active ? active.mood : peeking ? "peek" : ambient;
   const celebrating = Boolean(
     bubble && (active?.mood === "celebrate" || active?.mood === "nibble" || active?.mood === "wow")
@@ -673,14 +732,15 @@ export function MascotHost({
   const isLastTutorialStep = bubble?.kind === "tutorial" && bubble.index >= bubble.steps.length - 1;
   // Defined role: only show floating when it has something to say, is peeking during a run, or is in a special ambient state (sleepy/thinking).
   // Idle floating with no message is now hidden — Nibbles appears purposefully for onboarding, streaks, celebrations, and hints.
-  const shouldShow = Boolean(bubble || peeking || ambient !== "idle");
+  const shouldShow = mascotVisible && Boolean(bubble || peeking || ambient !== "idle");
 
   return (
-    <div
-      className={`mascot-wrap${peeking && !bubble ? " mascot-peeking" : ""}${
-        !shouldShow ? " mascot-hidden" : ""
-      }`}
-    >
+    <div className="mascot-host">
+      <div
+        className={`mascot-wrap${peeking && !bubble ? " mascot-peeking" : ""}${
+          !shouldShow ? " mascot-hidden" : ""
+        }`}
+      >
       {/* Preload every pose so a mood swap never flickers. */}
       <div style={{ display: "none" }} aria-hidden>
         {Object.values(MASCOT_IMAGES).map((src) => (
@@ -707,7 +767,7 @@ export function MascotHost({
         </div>
       )}
 
-      {bubble && active && (
+      {shouldShow && bubble && active && (
         <div
           key={bubble.key}
           className="mascot-bubble"
@@ -735,25 +795,24 @@ export function MascotHost({
             {!typingDone && <span className="mascot-caret" aria-hidden />}
           </p>
 
-          {bubble.kind === "single" && typingDone && active?.action && (
+          {bubble.kind === "single" && typingDone && activeAction && (
             <div className="mascot-actions">
-              <a className="btn btn-primary btn-sm" href={active.action.href}>
-                {active.action.label}
-              </a>
-            </div>
-          )}
-
-          {bubble.kind === "single" && typingDone && (
-            <div className="mascot-message-actions">
-              <button
-                type="button"
-                className="mascot-preference"
-                aria-pressed={reducedPopups}
-                onClick={toggleReducedPopups}
-              >
-                {reducedPopups ? "Show all mascot messages" : "Show fewer pop-ups"}
-              </button>
-              {preferenceError && <span role="alert">{preferenceError}</span>}
+              {"href" in activeAction ? (
+                <a className="btn btn-primary btn-sm" href={activeAction.href}>
+                  {activeAction.label}
+                </a>
+              ) : (
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    activeAction.onSelect();
+                  }}
+                >
+                  {activeAction.label}
+                </button>
+              )}
             </div>
           )}
 
@@ -772,36 +831,104 @@ export function MascotHost({
         </div>
       )}
 
-      <button
-        type="button"
-        className={[
-          "mascot-avatar",
-          mood === "idle" ? "mascot-idle" : "",
-          celebrating ? `mascot-anim-${anim}` : "",
-          dozing ? "mascot-sleepy" : "",
-          thinking ? "mascot-thinking" : "",
-        ]
-          .filter(Boolean)
-          .join(" ")}
-        onClick={poke}
-        aria-label="Nibbles the hamster, your study buddy"
-        title="Nibbles"
-      >
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img key={mood} src={MASCOT_IMAGES[mood]} alt="" draggable={false} />
-        {dozing && (
-          <span className="mascot-zzz" aria-hidden>
-            <span>z</span>
-            <span>z</span>
-            <span>Z</span>
-          </span>
+      {shouldShow && (
+        <button
+          type="button"
+          className={[
+            "mascot-avatar",
+            mood === "idle" ? "mascot-idle" : "",
+            celebrating ? `mascot-anim-${anim}` : "",
+            dozing ? "mascot-sleepy" : "",
+            thinking ? "mascot-thinking" : "",
+          ]
+            .filter(Boolean)
+            .join(" ")}
+          onClick={poke}
+          aria-label="Nibbles the hamster, your study buddy"
+          title="Nibbles"
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img key={mood} src={MASCOT_IMAGES[mood]} alt="" draggable={false} />
+          {dozing && (
+            <span className="mascot-zzz" aria-hidden>
+              <span>z</span>
+              <span>z</span>
+              <span>Z</span>
+            </span>
+          )}
+          {thinking && (
+            <span className="mascot-thought" aria-hidden>
+              <span>💭</span>
+            </span>
+          )}
+        </button>
+      )}
+
+      </div>
+      <div className="mascot-settings-anchor">
+        <button
+          type="button"
+          className="mascot-settings-trigger"
+          aria-label="Nibbles settings"
+          aria-expanded={settingsOpen}
+          aria-controls="mascot-settings"
+          onClick={() => setSettingsOpen((open) => !open)}
+        >
+          <Settings2 size={18} aria-hidden />
+        </button>
+        {settingsOpen && (
+          <section
+            id="mascot-settings"
+            className="mascot-settings"
+            aria-labelledby="mascot-settings-title"
+          >
+            <div className="mascot-settings-heading">
+              <h2 id="mascot-settings-title">Nibbles settings</h2>
+              <button
+                type="button"
+                className="mascot-close"
+                aria-label="Close Nibbles settings"
+                onClick={() => setSettingsOpen(false)}
+              >
+                <X size={12} aria-hidden />
+              </button>
+            </div>
+            <div className="mascot-setting-row">
+              <span>
+                <strong>Show Nibbles</strong>
+                <small>Allow mascot messages and study moments</small>
+              </span>
+              <button
+                type="button"
+                role="switch"
+                aria-label="Show Nibbles"
+                aria-checked={mascotVisible}
+                className={`mascot-setting-switch${mascotVisible ? " on" : ""}`}
+                onClick={toggleMascotVisible}
+              >
+                <span />
+              </button>
+            </div>
+            <div className="mascot-setting-row">
+              <span>
+                <strong>Fewer pop-ups</strong>
+                <small>Quiet greetings and streak cheers</small>
+              </span>
+              <button
+                type="button"
+                role="switch"
+                aria-label="Fewer mascot pop-ups"
+                aria-checked={reducedPopups}
+                className={`mascot-setting-switch${reducedPopups ? " on" : ""}`}
+                onClick={toggleReducedPopups}
+              >
+                <span />
+              </button>
+            </div>
+            {preferenceError && <p className="mascot-settings-error" role="alert">{preferenceError}</p>}
+          </section>
         )}
-        {thinking && (
-          <span className="mascot-thought" aria-hidden>
-            <span>💭</span>
-          </span>
-        )}
-      </button>
+      </div>
     </div>
   );
 }
