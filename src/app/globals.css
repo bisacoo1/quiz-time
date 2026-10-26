@@ -2285,6 +2285,36 @@ h1, h2, h3 {
   margin-top: 10px;
 }
 
+.mascot-message-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.mascot-preference {
+  padding: 2px 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.mascot-preference:hover,
+.mascot-preference:focus-visible {
+  color: var(--primary);
+  text-decoration: underline;
+}
+
+.mascot-message-actions [role="alert"] {
+  color: var(--danger-text);
+  font-size: 11px;
+  text-align: right;
+}
+
 .mascot-caret {
   display: inline-block;
   width: 2px;

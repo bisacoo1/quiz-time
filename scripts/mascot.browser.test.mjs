@@ -107,3 +107,24 @@ test("celebration and thinking poses keep the same character size", async ({ pag
   await expect(avatar).toBeVisible();
   await expect(page.locator(".mascot-thought")).toBeAttached();
 });
+
+test("reduced pop-up preference persists and keeps study feedback", async ({ page }) => {
+  await page.getByRole("button", { name: "Skip tour", exact: true }).click();
+  await page.getByRole("button", { name: /5-in-a-row streak/ }).click();
+  await page.getByRole("button", { name: "Show fewer pop-ups", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Show all mascot messages", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "true"
+  );
+
+  await page.getByRole("button", { name: "Dismiss Nibbles", exact: true }).click();
+  await page.getByRole("button", { name: /5-in-a-row streak/ }).click();
+  await expect(page.locator(".mascot-bubble")).toBeHidden();
+
+  await page.reload();
+  await page.getByRole("button", { name: /5-in-a-row streak/ }).click();
+  await expect(page.locator(".mascot-bubble")).toBeHidden();
+
+  await page.getByRole("button", { name: /Study finished · 92%/ }).click();
+  await expect(page.getByRole("button", { name: "Show all mascot messages", exact: true })).toBeVisible();
+});

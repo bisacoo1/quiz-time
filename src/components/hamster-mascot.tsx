@@ -367,6 +367,15 @@ interface BubbleState {
 const onboardKey = (id: string) => `quiztime-mascot-onboarded:${id}`;
 /** Per-tab-session key: greet once per visit, not on every render. */
 const greetKey = (id: string) => `quiztime-mascot-greeted:${id}`;
+/** Per-account setting for quieter ambient mascot messages. */
+const reducedPopupsKey = (id: string) => `quiztime-mascot-reduced-popups:${id}`;
+function readReducedPopups(id: string): boolean {
+  try {
+    return typeof window !== "undefined" && window.localStorage.getItem(reducedPopupsKey(id)) === "1";
+  } catch {
+    return false;
+  }
+}
 
 const AUTO_DISMISS_MS = 9000;
 const CHAIN_DELAY_MS = 900;
@@ -385,6 +394,9 @@ export function MascotHost({
 }) {
   const [bubble, setBubble] = useState<BubbleState | null>(null);
   const [shown, setShown] = useState(0);
+  const [reducedPopups, setReducedPopups] = useState(() => readReducedPopups(userId ?? "anon"));
+  const [preferenceError, setPreferenceError] = useState<string | null>(null);
+  const reducedPopupsRef = useRef(reducedPopups);
   /** Ambient pose between bubbles — sleepy when away, thinking while generating. */
   const [ambient, setAmbient] = useState<"idle" | "sleepy" | "thinking">("idle");
   /** Sync read of the ambient pose for event handlers (no stale closures). */
@@ -464,6 +476,7 @@ export function MascotHost({
     const timer = setTimeout(() => {
       void (async () => {
         if (cancelled) return;
+        if (reducedPopupsRef.current) return;
         let greet;
         let onboarded;
         try {
@@ -498,7 +511,7 @@ export function MascotHost({
               : { kind: "sad", lostStreak: Math.max(snap?.streak ?? 5, 2) };
         } else {
           const habit = await loadHabitData();
-          if (cancelled) return;
+          if (cancelled || reducedPopupsRef.current) return;
           if (habit) {
             if (onboarded) moment = decideHabitMoment(habit, snap);
             writeHabitSnapshot(id, { streak: habit.streak, at: new Date().toISOString() });
@@ -539,6 +552,7 @@ export function MascotHost({
         showSingle(generatingStep());
         return;
       }
+      if (reducedPopupsRef.current && (ev.type === "streak" || ev.type === "first-run")) return;
       // Everything else wakes him up.
       setAmbientNow("idle");
       queuedStep.current = null;
@@ -626,6 +640,18 @@ export function MascotHost({
     setBubble({ ...bubble, index: bubble.index + 1 });
   };
 
+  const toggleReducedPopups = () => {
+    const next = !reducedPopupsRef.current;
+    try {
+      window.localStorage.setItem(reducedPopupsKey(userId ?? "anon"), next ? "1" : "0");
+      reducedPopupsRef.current = next;
+      setReducedPopups(next);
+      setPreferenceError(null);
+    } catch {
+      setPreferenceError("Couldn’t save this setting in your browser.");
+    }
+  };
+
   const mood: MascotMood = bubble && active ? active.mood : peeking ? "peek" : ambient;
   const celebrating = Boolean(
     bubble && (active?.mood === "celebrate" || active?.mood === "nibble" || active?.mood === "wow")
@@ -697,6 +723,20 @@ export function MascotHost({
             {fullText.slice(0, shown)}
             {!typingDone && <span className="mascot-caret" aria-hidden />}
           </p>
+
+          {bubble.kind === "single" && typingDone && (
+            <div className="mascot-message-actions">
+              <button
+                type="button"
+                className="mascot-preference"
+                aria-pressed={reducedPopups}
+                onClick={toggleReducedPopups}
+              >
+                {reducedPopups ? "Show all mascot messages" : "Show fewer pop-ups"}
+              </button>
+              {preferenceError && <span role="alert">{preferenceError}</span>}
+            </div>
+          )}
 
           {bubble.kind === "tutorial" && typingDone && (
             <div className="mascot-actions">
