@@ -776,6 +776,7 @@ export function MascotHost({
         type="button"
         className={[
           "mascot-avatar",
+          mood === "idle" ? "mascot-idle" : "",
           celebrating ? `mascot-anim-${anim}` : "",
           dozing ? "mascot-sleepy" : "",
           thinking ? "mascot-thinking" : "",
@@ -787,7 +788,7 @@ export function MascotHost({
         title="Nibbles"
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={MASCOT_IMAGES[mood]} alt="" draggable={false} />
+        <img key={mood} src={MASCOT_IMAGES[mood]} alt="" draggable={false} />
         {dozing && (
           <span className="mascot-zzz" aria-hidden>
             <span>z</span>

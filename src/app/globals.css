@@ -2140,10 +2140,22 @@ h1, h2, h3 {
 
 /* ── Mascot — defined role, not loose float ───────────────────────────────── */
 
-.mascot-avatar.mascot-anim-bounce img { animation: mascot-bounce 0.55s ease-in-out infinite; }
-.mascot-avatar.mascot-anim-spin img { animation: mascot-spin 0.85s ease-in-out infinite; }
-.mascot-avatar.mascot-anim-dance img { animation: mascot-dance 0.5s ease-in-out infinite; }
-.mascot-avatar.mascot-anim-flip img { animation: mascot-flip 1.05s ease-in-out infinite; }
+.mascot-avatar img { animation: mascot-pose-in 220ms ease-out both; }
+.mascot-avatar.mascot-idle img {
+  animation: mascot-breathe 4.8s ease-in-out infinite, mascot-pose-in 220ms ease-out both;
+}
+.mascot-avatar.mascot-anim-bounce img {
+  animation: mascot-bounce 0.55s ease-in-out infinite, mascot-pose-in 220ms ease-out both;
+}
+.mascot-avatar.mascot-anim-spin img {
+  animation: mascot-spin 0.85s ease-in-out infinite, mascot-pose-in 220ms ease-out both;
+}
+.mascot-avatar.mascot-anim-dance img {
+  animation: mascot-dance 0.5s ease-in-out infinite, mascot-pose-in 220ms ease-out both;
+}
+.mascot-avatar.mascot-anim-flip img {
+  animation: mascot-flip 1.05s ease-in-out infinite, mascot-pose-in 220ms ease-out both;
+}
 
 .mascot-wrap {
   /* One scale for the character, bubble pointer, and half-hidden peek.
@@ -2371,6 +2383,16 @@ h1, h2, h3 {
   }
 }
 
+@keyframes mascot-pose-in {
+  from { opacity: 0.65; }
+  to { opacity: 1; }
+}
+
+@keyframes mascot-breathe {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(-2px) scale(1.012); }
+}
+
 @keyframes mascot-caret-blink {
   50% { opacity: 0; }
 }
@@ -2419,6 +2441,7 @@ h1, h2, h3 {
 @media (prefers-reduced-motion: reduce) {
   .mascot-wrap,
   .mascot-avatar,
+  .mascot-avatar img,
   .mascot-bubble,
   .mascot-caret,
   .mascot-zzz span,

@@ -145,3 +145,24 @@ test("completion messages offer relevant next steps", async ({ page }) => {
     "/?tab=sessions"
   );
 });
+
+test("mascot breathing and pose transitions respect reduced motion", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  const avatar = page.locator(".mascot-avatar");
+  const image = avatar.locator("img");
+
+  await avatar.evaluate((element) => element.classList.add("mascot-idle"));
+  await expect.poll(() => image.evaluate((element) => getComputedStyle(element).animationName)).toContain(
+    "mascot-breathe"
+  );
+
+  await avatar.evaluate((element) => element.classList.remove("mascot-idle"));
+  await page.getByRole("button", { name: "Skip tour", exact: true }).click();
+  await page.getByRole("button", { name: /Study finished · 92%/ }).click();
+  await expect.poll(() => image.evaluate((element) => getComputedStyle(element).animationName)).toContain(
+    "mascot-flip"
+  );
+
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await expect.poll(() => image.evaluate((element) => getComputedStyle(element).animationName)).toBe("none");
+});
