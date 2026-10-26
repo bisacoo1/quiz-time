@@ -2408,6 +2408,12 @@ h1, h2, h3 {
     --mascot-size: 112px;
     bottom: calc(78px + env(safe-area-inset-bottom, 0px));
   }
+
+  .mascot-bubble {
+    box-sizing: border-box;
+    max-height: calc(100dvh - 78px - var(--mascot-size) - 24px - env(safe-area-inset-bottom, 0px));
+    overflow-y: auto;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

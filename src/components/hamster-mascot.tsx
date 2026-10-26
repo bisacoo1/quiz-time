@@ -169,6 +169,7 @@ function completionLines(ev: MascotEvent, first: string): Step {
           mood: "nibble",
           anim,
           burst: true,
+          action: { label: "Open Spaced Review", href: "/?tab=review" },
           text: `AMAZING, ${first}! You knew ${ev.knownPct}% of the deck — you own Study Mode 🎉 Now move to another mode: try Exam Mode, 4 choices and instant score!`,
         };
       }
@@ -176,11 +177,13 @@ function completionLines(ev: MascotEvent, first: string): Step {
         return {
           mood: "celebrate",
           anim,
+          action: { label: "Open Spaced Review", href: "/?tab=review" },
           text: `Great job, ${first}! You finished Study Mode with ${ev.knownPct}% known 🎉 Now move to another study mode — try Exam Mode!`,
         };
       }
       return {
         mood: "point",
+        action: { label: "Open Spaced Review", href: "/?tab=review" },
         text: `Phew — a full round done, ${first}! ${ev.knownPct}% known this time, and that's okay 💪 Let's review the missed cards once more, then conquer Exam Mode together!`,
       };
     }
@@ -199,6 +202,7 @@ function completionLines(ev: MascotEvent, first: string): Step {
           mood: "nibble",
           anim,
           burst: true,
+          action: { label: "Open Spaced Review", href: "/?tab=review" },
           text: `WOW, ${first}! ${ev.pct}% on ${modeName} — superstar! 🎉⭐ ${nextLine}`,
         };
       }
@@ -206,11 +210,13 @@ function completionLines(ev: MascotEvent, first: string): Step {
         return {
           mood: "celebrate",
           anim,
+          action: { label: "Open Spaced Review", href: "/?tab=review" },
           text: `You did it, ${first}! ${ev.pct}% on ${modeName} 🎉 ${nextLine}`,
         };
       }
       return {
         mood: "point",
+        action: { label: "Open Spaced Review", href: "/?tab=review" },
         text: `Tough round, ${first} — ${ev.pct}% this time. Every miss teaches you something! 🧠 Study the missed cards below, then come back and smash it!`,
       };
     }
@@ -220,12 +226,14 @@ function completionLines(ev: MascotEvent, first: string): Step {
           mood: ev.pct >= 90 ? "nibble" : "celebrate",
           anim: FINISH_ANIM.review,
           burst: ev.pct >= 90,
+          action: { label: "See Review Queue", href: "/?tab=review" },
           text: `Review round complete — ${ev.pct}% recalled! 🎉 Incredible memory, ${first}! Come back tomorrow to keep your streak going!`,
         };
       }
       return {
         mood: "celebrate",
         anim: FINISH_ANIM.review,
+        action: { label: "See Review Queue", href: "/?tab=review" },
         text: `Review round done! 🎉 The tricky ones will come back sooner — that's the secret plan working. See you tomorrow, ${first}!`,
       };
     default:
@@ -237,6 +245,7 @@ function completionLines(ev: MascotEvent, first: string): Step {
 function sleepyStep(first: string, days: number | null): Step {
   return {
     mood: "sleepy",
+    action: { label: "Choose a study set", href: "/?tab=sessions" },
     text:
       days === null
         ? `Hiii ${first}… the flashcards are still waiting for our very first round 😴 Wake me up with one tiny study session?`
@@ -248,6 +257,7 @@ function sleepyStep(first: string, days: number | null): Step {
 function sadStep(first: string, lostStreak: number): Step {
   return {
     mood: "sad",
+    action: { label: "Choose a study set", href: "/?tab=sessions" },
     text: `Oh no, ${first}… our ${lostStreak}-day streak slipped away 😢 It's okay — even champions need rest days! One tiny round and we start a brand-new streak?`,
   };
 }
@@ -349,6 +359,7 @@ function writeHabitSnapshot(id: string, snapshot: HabitSnapshot) {
 interface Step {
   text: string;
   mood: MascotMood;
+  action?: { label: string; href: string };
   /** Celebration animation to loop while this bubble is up. */
   anim?: CelebrateAnim;
   /** ⭐ burst particles for 90%+ finishes. */
@@ -723,6 +734,14 @@ export function MascotHost({
             {fullText.slice(0, shown)}
             {!typingDone && <span className="mascot-caret" aria-hidden />}
           </p>
+
+          {bubble.kind === "single" && typingDone && active?.action && (
+            <div className="mascot-actions">
+              <a className="btn btn-primary btn-sm" href={active.action.href}>
+                {active.action.label}
+              </a>
+            </div>
+          )}
 
           {bubble.kind === "single" && typingDone && (
             <div className="mascot-message-actions">

@@ -128,3 +128,20 @@ test("reduced pop-up preference persists and keeps study feedback", async ({ pag
   await page.getByRole("button", { name: /Study finished · 92%/ }).click();
   await expect(page.getByRole("button", { name: "Show all mascot messages", exact: true })).toBeVisible();
 });
+
+test("completion messages offer relevant next steps", async ({ page }) => {
+  await page.getByRole("button", { name: "Skip tour", exact: true }).click();
+  await page.getByRole("button", { name: /Study finished · 92%/ }).click();
+  const reviewAction = page.getByRole("link", { name: "Open Spaced Review", exact: true });
+  await expect(reviewAction).toHaveAttribute("href", "/?tab=review");
+  await expectBubbleToFit(page);
+
+  await page.getByRole("button", { name: "Dismiss Nibbles", exact: true }).click();
+  await page.getByRole("button", { name: /Inactive for days/ }).click();
+  await expect(page.getByRole("button", { name: "Dismiss Nibbles", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Dismiss Nibbles", exact: true }).click();
+  await expect(page.getByRole("link", { name: "Choose a study set", exact: true })).toHaveAttribute(
+    "href",
+    "/?tab=sessions"
+  );
+});
