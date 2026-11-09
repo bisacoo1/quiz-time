@@ -55,6 +55,52 @@ export const subjects = pgTable(
   ]
 );
 
+/**
+ * Private source documents used by Side by Side study mode.
+ *
+ * File bytes live in private object storage; this row stores ownership,
+ * display metadata, and the learner's resume position.
+ */
+export const savedDocuments = pgTable(
+  "saved_documents",
+  {
+    id: serial("id").primaryKey(),
+    userId: text("user_id").notNull().references(() => users.id, {
+      onDelete: "cascade",
+      onUpdate: "cascade",
+    }),
+    originalName: text("original_name").notNull(),
+    storagePath: text("storage_path").notNull().unique(),
+    mimeType: text("mime_type").notNull(),
+    sizeBytes: integer("size_bytes").notNull(),
+    lastPage: integer("last_page").notNull().default(1),
+    lastScrollTop: integer("last_scroll_top").notNull().default(0),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("saved_documents_user_updated_idx").on(table.userId, table.updatedAt),
+  ]
+);
+
+export const documentUploadReservations = pgTable(
+  "document_upload_reservations",
+  {
+    id: serial("id").primaryKey(),
+    userId: text("user_id").notNull().references(() => users.id, {
+      onDelete: "cascade",
+      onUpdate: "cascade",
+    }),
+    storagePath: text("storage_path").notNull().unique(),
+    reservedBytes: integer("reserved_bytes").notNull(),
+    expiresAt: timestamp("expires_at").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("document_upload_reservations_user_expires_idx").on(table.userId, table.expiresAt),
+  ]
+);
+
 export const studySessions = pgTable(
   "study_sessions",
   {
@@ -251,6 +297,7 @@ export const studyResults = pgTable(
 
 export type User = typeof users.$inferSelect;
 export type Subject = typeof subjects.$inferSelect;
+export type SavedDocument = typeof savedDocuments.$inferSelect;
 export type StudySession = typeof studySessions.$inferSelect;
 export type Flashcard = typeof flashcards.$inferSelect;
 export type CardProgress = typeof cardProgress.$inferSelect;

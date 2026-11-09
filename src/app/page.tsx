@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo, useId, type ReactNode } from "react";
 import { useSession, signIn, signOut } from "next-auth/react";
+import Link from "next/link";
 import { LoginPage } from "@/components/login-page";
 import { AiTutor } from "@/components/ai-tutor";
 import { OwnerPresenceBar, PresencePanel } from "@/components/owner-presence";
@@ -7470,6 +7471,35 @@ function HomePage({
           </button>
         </div>
       </div>
+
+      <Link
+        href="/side-by-side"
+        className="card-elevated animate-fade-in"
+        style={{
+          width: "100%",
+          display: "flex",
+          alignItems: "center",
+          gap: 12,
+          padding: "14px 16px",
+          color: "inherit",
+          textDecoration: "none",
+          border: "1px solid var(--border)",
+          background: "var(--gray-50)",
+        }}
+      >
+        <span style={{ width: 40, height: 40, borderRadius: 12, background: "white", boxShadow: "0 1px 2px rgba(0,0,0,0.06)", color: "#5b54d6", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+          <BookOpen size={20} aria-hidden />
+        </span>
+        <span style={{ flex: 1, minWidth: 0 }}>
+          <span style={{ display: "block", fontWeight: 700, fontSize: 15 }}>
+            Read with AI · Side by Side
+          </span>
+          <span style={{ display: "block", fontSize: 12.5, color: "var(--text-muted)", marginTop: 2 }}>
+            Open a saved PDF or DOCX and ask about any passage
+          </span>
+        </span>
+        <ChevronRight size={18} aria-hidden style={{ color: "var(--text-faint)", flexShrink: 0 }} />
+      </Link>
 
       {unfinishedExam && (
         <div

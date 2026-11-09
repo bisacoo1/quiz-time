@@ -10,6 +10,7 @@ an AI tutor and spaced repetition. It works offline as an installable PWA.
 - [Quick start](#quick-start)
 - [Creating decks](#creating-decks)
 - [Studying](#studying)
+- [Side by Side](#side-by-side)
 - [Organizing decks](#organizing-decks)
 - [Spaced repetition](#spaced-repetition)
 - [Study stats](#study-stats)
@@ -40,6 +41,8 @@ an AI tutor and spaced repetition. It works offline as an installable PWA.
   become "name them all" questions with per-item feedback.
 - **Spaced Review** – a daily queue of only the cards you are about to forget,
   graded Again / Hard / Good / Easy.
+- **Side by Side** – save a PDF or DOCX, read it in the app, highlight a passage
+  for an AI explanation, and return later to your saved reading position.
 
 **Learning aids**
 
@@ -103,6 +106,7 @@ npm run dev
 | `AUTH_SECRET` | for sign-in | Auth.js secret. Generate with `openssl rand -base64 32`. |
 | `AUTH_GOOGLE_ID` | for sign-in | Google OAuth client ID. |
 | `AUTH_GOOGLE_SECRET` | for sign-in | Google OAuth client secret. |
+| `BLOB_READ_WRITE_TOKEN` | for Side by Side | Read/write token for a **private** Vercel Blob store. Keep it server-only. |
 | `OWNER_EMAIL` | no | The account that becomes the **owner** and sees the [who's online roster](#owner-tools). Case-insensitive; comma-separated addresses allowed. Empty or unset = feature off. |
 | `MAINTENANCE_MODE` | no | `1`/`true`/`yes`/`on` enables [maintenance mode](#maintenance-mode). |
 | `VAPID_PUBLIC_KEY` | for push | Web push public key. Generate with `npx web-push generate-vapid-keys`. |
@@ -190,6 +194,21 @@ requires sign-in and a network connection, and is rate-limited per account.
 The results screen shows accuracy, letter grade, points out of the maximum,
 best streak, elapsed time, and a review of missed questions (which can be sent
 straight into Study mode).
+
+## Side by Side
+
+Open **Read with AI · Side by Side** from the home screen to upload a PDF or
+DOCX up to 50 MB per file, with 500 MB of total storage per account. Documents
+are stored in a private Vercel Blob store and tied to the signed-in account.
+Select text in the reader and choose **Explain with AI** to ask the tutor about
+it. Follow-up questions stay grounded in the selected passage. PDF page
+position and DOCX scroll position are saved so reading can resume later.
+Documents can be deleted from the library.
+
+Before enabling uploads, create and connect a **private** Vercel Blob store for
+the project, then add its `BLOB_READ_WRITE_TOKEN` to local development and the
+Vercel project environment. Never make this token public. PDF pages keep their
+layout; DOCX files are displayed as readable text in this first version.
 
 ## Organizing decks
 
