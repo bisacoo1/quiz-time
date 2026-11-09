@@ -43,3 +43,20 @@ export function getSideBySideMimeType(name: string): SideBySideMimeType | null {
 export function isSideBySideMimeType(value: string): value is SideBySideMimeType {
   return SIDE_BY_SIDE_ALLOWED_MIME_TYPES.includes(value as SideBySideMimeType);
 }
+
+export function removeTutorMarkdown(text: string): string {
+  return text
+    .replace(/```[\w-]*\s*\n?/g, "")
+    .replace(/```/g, "")
+    .replace(/^[ \t]{0,3}#{1,6}[ \t]*/gm, "")
+    .replace(/^[ \t]*(?:(?:\*{3,}|-{3,}|_{3,})[ \t]*)$/gm, "")
+    .replace(/^[ \t]*(?:[-*+]|\d+[.)])[ \t]+/gm, "")
+    .replace(/^[ \t]*>[ \t]?/gm, "")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/(\*\*|__)(.*?)\1/g, "$2")
+    .replace(/(\*|_)([^*_]+)\1/g, "$2")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}

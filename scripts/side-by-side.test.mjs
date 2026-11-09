@@ -4,6 +4,7 @@ import {
   hasSideBySideStorageCapacity,
   getSideBySideMimeType,
   isSideBySideMimeType,
+  removeTutorMarkdown,
   sanitizeDocumentName,
   SIDE_BY_SIDE_MAX_FILE_BYTES,
   SIDE_BY_SIDE_STORAGE_LIMIT_BYTES,
@@ -66,4 +67,20 @@ test("storage reservations reject invalid byte counts", () => {
   assert.equal(hasSideBySideStorageCapacity(-1, 0, 1), false);
   assert.equal(hasSideBySideStorageCapacity(0, 0, 0), false);
   assert.equal(hasSideBySideStorageCapacity(0, 0, 1.5), false);
+});
+
+test("tutor answers display cleanly without Markdown markers", () => {
+  const input = [
+    "### What the Passage Means",
+    "The **CECS Fee Tracker** is a *computer program*.",
+    "",
+    "* **Purpose:** Tracks fees.",
+    "* **Technology:** Uses `Python`.",
+    "---",
+    "[Read more](https://example.com)",
+  ].join("\n");
+  assert.equal(
+    removeTutorMarkdown(input),
+    "What the Passage Means\nThe CECS Fee Tracker is a computer program.\n\nPurpose: Tracks fees.\nTechnology: Uses Python.\n\nRead more"
+  );
 });
