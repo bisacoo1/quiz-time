@@ -2145,6 +2145,8 @@ function ModeSelect({
   cards,
   dueCount,
   canReview,
+  examTimerMinutes,
+  onExamTimerChange,
   onSelect,
 }: {
   cardCount: number;
@@ -2153,6 +2155,8 @@ function ModeSelect({
   dueCount: number | null;
   /** Spaced repetition needs server-side card ids, so unsaved decks can't review. */
   canReview: boolean;
+  examTimerMinutes: number;
+  onExamTimerChange: (minutes: number) => void;
   onSelect: (mode: "study" | "exam" | "identify" | "enumerate" | "review") => void;
 }) {
   const enumerateCount = cards.filter(isEnumCard).length;
@@ -2166,6 +2170,31 @@ function ModeSelect({
         <h2 style={{ margin: "0 0 6px", fontSize: 21, fontWeight: 800 }}>How do you want to study?</h2>
         <p style={{ margin: 0, fontSize: 14, color: "var(--text-muted)" }}>
           {cardCount} card{cardCount === 1 ? "" : "s"} ready · pick a mode to begin
+        </p>
+      </div>
+
+      <div style={{ margin: "0 0 14px", padding: "14px 16px", borderRadius: 16, background: "#f8faff" }}>
+        <p style={{ margin: "0 0 10px", fontSize: 14, fontWeight: 800 }}>Exam timer</p>
+        <div role="group" aria-label="Exam timer duration" style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+          {[
+            { minutes: 0, label: "No timer" },
+            { minutes: 10, label: "10 min" },
+            { minutes: 20, label: "20 min" },
+            { minutes: 30, label: "30 min" },
+          ].map(({ minutes, label }) => (
+            <button
+              key={minutes}
+              type="button"
+              className={`btn btn-sm ${examTimerMinutes === minutes ? "btn-primary" : "btn-secondary"}`}
+              aria-pressed={examTimerMinutes === minutes}
+              onClick={() => onExamTimerChange(minutes)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <p style={{ margin: "8px 0 0", fontSize: 12, color: "var(--text-muted)" }}>
+          Only applies to Exam Mode. The timer starts when the exam begins.
         </p>
       </div>
 
@@ -2891,6 +2920,8 @@ function ExamSummary({
   bestStreak,
   elapsed,
   baselineAccuracy,
+  totalQuestions,
+  timedOut = false,
   onRetry,
   onStudyMissed,
   onBackToModes,
@@ -2903,6 +2934,8 @@ function ExamSummary({
   bestStreak: number;
   elapsed: number;
   baselineAccuracy?: number;
+  totalQuestions?: number;
+  timedOut?: boolean;
   onRetry: () => void;
   onStudyMissed: () => void;
   onBackToModes: () => void;
@@ -2910,9 +2943,11 @@ function ExamSummary({
   retryLabel?: string;
 }) {
   const total = answers.length;
+  const questionCount = totalQuestions ?? total;
+  const unanswered = Math.max(0, questionCount - total);
   const correct = answers.filter((a) => a.isCorrect).length;
   const wrong = total - correct;
-  const pct = total ? Math.round((correct / total) * 100) : 0;
+  const pct = questionCount ? Math.round((correct / questionCount) * 100) : 0;
   const { grade, message, icon: GradeIcon, color } = gradeFor(pct);
   const missed = answers.filter((a) => !a.isCorrect);
 
@@ -2929,6 +2964,11 @@ function ExamSummary({
         {completeTitle}
       </h2>
       <p style={{ color: "var(--text-muted)", margin: "0 0 22px", fontSize: 15 }}>{message}</p>
+      {timedOut && (
+        <p style={{ color: "var(--text-muted)", margin: "-12px 0 18px", fontSize: 14 }}>
+          You answered {total} of {questionCount} questions before time ran out.
+        </p>
+      )}
 
       {/* Score ring */}
       <div
@@ -2950,11 +2990,12 @@ function ExamSummary({
       </div>
 
       {/* Stats */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 12 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
         {[
           { label: "Correct", value: correct, color: "#10b981", bg: "#ecfdf5" },
           { label: "Wrong", value: wrong, color: "#f43f5e", bg: "#fff1f2" },
-          { label: "Questions", value: total, color: "#3b82f6", bg: "#eff6ff" },
+          { label: "Answered", value: total, color: "#3b82f6", bg: "#eff6ff" },
+          { label: "Unanswered", value: unanswered, color: "#d97706", bg: "#fffbeb" },
         ].map((s) => (
           <div key={s.label} style={{ background: s.bg, borderRadius: 16, padding: "14px 8px" }}>
             <div style={{ fontSize: 24, fontWeight: 800, color: s.color }}>{s.value}</div>
@@ -3887,6 +3928,42 @@ function QuizPage({
   const [examDone, setExamDone] = useState(false);
   const [startedAt, setStartedAt] = useState(() => Date.now());
   const [elapsed, setElapsed] = useState(0);
+  const [examTimerMinutes, setExamTimerMinutes] = useState(0);
+  const [timerDeadline, setTimerDeadline] = useState<number | null>(null);
+  const [timeRemaining, setTimeRemaining] = useState(0);
+  const [timedOut, setTimedOut] = useState(false);
+  const [runStartVersion, setRunStartVersion] = useState(0);
+
+  useEffect(() => {
+    if (runStartVersion === 0) return;
+    const timeout = window.setTimeout(() => {
+      const now = Date.now();
+      const duration = mode === "exam" ? examTimerMinutes : 0;
+      setStartedAt(now);
+      setTimeRemaining(duration * 60);
+      setTimerDeadline(duration > 0 ? now + duration * 60_000 : null);
+    }, 0);
+    return () => window.clearTimeout(timeout);
+  }, [runStartVersion, mode, examTimerMinutes]);
+
+  useEffect(() => {
+    if (mode !== "exam" || examDone || timerDeadline === null) return;
+
+    const updateRemaining = () => {
+      const remaining = Math.max(0, Math.ceil((timerDeadline - Date.now()) / 1000));
+      setTimeRemaining(remaining);
+      if (remaining === 0) {
+        setElapsed(Math.max(1, Math.round((Math.min(Date.now(), timerDeadline) - startedAt) / 1000)));
+        setTimedOut(true);
+        setTimerDeadline(null);
+        setExamDone(true);
+      }
+    };
+
+    updateRemaining();
+    const interval = window.setInterval(updateRemaining, 250);
+    return () => window.clearInterval(interval);
+  }, [mode, examDone, timerDeadline, startedAt]);
 
   // Load progress from server if we have a sessionId; the snapshot saved on
   // this device answers when there's no network.
@@ -4174,8 +4251,9 @@ function QuizPage({
     setStreak(0);
     setBestStreak(0);
     setExamDone(false);
-    setStartedAt(Date.now());
     setElapsed(0);
+    setTimedOut(false);
+    setRunStartVersion((version) => version + 1);
     missRunRef.current = 0;
     cheerIfFreshDeck();
     setMode(kind);
@@ -4255,6 +4333,7 @@ function QuizPage({
   const handleExamNext = () => {
     if (examIndex >= examQuestions.length - 1) {
       setElapsed(Math.max(1, Math.round((Date.now() - startedAt) / 1000)));
+      setTimerDeadline(null);
       setExamDone(true);
     } else {
       setExamIndex((i) => i + 1);
@@ -4262,7 +4341,11 @@ function QuizPage({
   };
 
   const handleStudyMissed = () => {
-    const missed = answers.filter((a) => !a.isCorrect).map((a) => a.card);
+    const answeredCards = new Set(answers.map((answer) => answer.card));
+    const missed = [
+      ...answers.filter((answer) => !answer.isCorrect).map((answer) => answer.card),
+      ...examQuestions.filter((question) => !answeredCards.has(question.card)).map((question) => question.card),
+    ];
     if (missed.length === 0) return;
     setActiveCards(missed);
     setCurrentIndex(0);
@@ -4543,6 +4626,12 @@ function QuizPage({
             <Star />
             {score} pts
           </span>
+          {timerDeadline !== null && (
+            <span className="score-pill" role="timer" aria-label={`${Math.floor(timeRemaining / 60)} minutes ${timeRemaining % 60} seconds remaining`}>
+              <Timer />
+              {formatTime(timeRemaining)}
+            </span>
+          )}
           <span className={`score-pill ${streak >= 3 ? "streak-hot" : "streak"}`}>
             <Flame />
             {streak} streak
@@ -4561,6 +4650,8 @@ function QuizPage({
           cards={cards}
           dueCount={dueCount}
           canReview={Boolean(sessionId) && !reviewLoading}
+          examTimerMinutes={examTimerMinutes}
+          onExamTimerChange={setExamTimerMinutes}
           onSelect={switchMode}
         />
       )}
@@ -4708,7 +4799,9 @@ function QuizPage({
           bestStreak={bestStreak}
           elapsed={elapsed}
           baselineAccuracy={initialMode === "exam" ? baselineAccuracy : undefined}
-          completeTitle={initialMode === "exam" ? "Weak Spots Practice Complete!" : undefined}
+          completeTitle={timedOut ? "Time's up!" : initialMode === "exam" ? "Weak Spots Practice Complete!" : undefined}
+          timedOut={timedOut}
+          totalQuestions={examQuestions.length}
           retryLabel={initialMode === "exam" ? "Practice Again" : undefined}
           onRetry={() => startScoredRun("exam")}
           onStudyMissed={handleStudyMissed}
