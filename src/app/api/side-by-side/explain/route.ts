@@ -116,20 +116,28 @@ export async function POST(request: NextRequest) {
     }, parts);
 
     const explanation = removeTutorMarkdown(result.text).slice(0, 4000);
-    await db.insert(documentTutorMessages).values([
-      {
-        documentId: documentId as number,
-        role: "user",
-        content: message,
-      },
-      {
-        documentId: documentId as number,
-        role: "assistant",
-        content: explanation,
-      },
-    ]);
+    const savedMessages = await db.transaction((tx) =>
+      tx
+        .insert(documentTutorMessages)
+        .values([
+          {
+            documentId: documentId as number,
+            role: "user",
+            content: message,
+          },
+          {
+            documentId: documentId as number,
+            role: "assistant",
+            content: explanation,
+          },
+        ])
+        .returning({
+          role: documentTutorMessages.role,
+          content: documentTutorMessages.content,
+        })
+    );
 
-    return NextResponse.json({ explanation });
+    return NextResponse.json({ explanation, messages: savedMessages });
   } catch (error) {
     console.error("Side by Side tutor error:", error);
     const message = error instanceof Error ? error.message : "The AI tutor couldn't respond. Please try again.";

@@ -445,10 +445,29 @@ export default function SideBySideClient() {
       });
       const body: unknown = await response.json();
       if (!response.ok) throw new Error(errorFromResponse(body, "The AI tutor couldn't respond."));
-      if (!body || typeof body !== "object" || !("explanation" in body) || typeof body.explanation !== "string") {
+      if (
+        !body ||
+        typeof body !== "object" ||
+        !("explanation" in body) ||
+        typeof body.explanation !== "string" ||
+        !("messages" in body) ||
+        !Array.isArray(body.messages) ||
+        !body.messages.every(
+          (entry) =>
+            !!entry &&
+            typeof entry === "object" &&
+            "role" in entry &&
+            (entry.role === "user" || entry.role === "assistant") &&
+            "content" in entry &&
+            typeof entry.content === "string"
+        )
+      ) {
         throw new Error("The AI tutor returned an invalid response.");
       }
-      setMessages((current) => [...current, { role: "assistant", content: body.explanation as string }]);
+      setMessages((current) => [
+        ...current.slice(0, -1),
+        ...(body.messages as TutorMessage[]),
+      ]);
     } catch (cause) {
       setMessages(nextMessages.slice(0, -1));
       setTutorError(cause instanceof Error ? cause.message : "The AI tutor couldn't respond.");
@@ -763,6 +782,9 @@ export default function SideBySideClient() {
                 )}
                 {!conversationLoading && messages.map((message, index) => (
                   <div className={`sbs-message sbs-message-${message.role}`} key={`${index}-${message.role}`}>
+                    <span className="sbs-message-speaker">
+                      {message.role === "user" ? "You" : "Tutor"}
+                    </span>
                     <p>{message.content}</p>
                   </div>
                 ))}
