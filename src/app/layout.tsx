@@ -48,11 +48,11 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
         <link rel="apple-touch-icon" href="/logo.png" />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        {/* Sora = display/headings, Inter = body UI — distinctive pairing, still highly legible.
+        {/* Outfit is used throughout the interface; the document reader keeps its own reading font.
             Stylesheet <link> on purpose: next/font would hard-fail when Google Fonts is unreachable. */}
         {/* eslint-disable-next-line @next/next/no-page-custom-font */}
         <link
-          href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Sora:wght@600;700;800&display=swap"
+          href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap"
           rel="stylesheet"
         />
       </head>
