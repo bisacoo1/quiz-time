@@ -7449,29 +7449,28 @@ function HomePage({
   const offlineReady = offlineDeckCount > 0;
   return (
     <div className="section-stack home-content">
-      {/* Hero — dark card, from the mockup */}
-      <div style={{ background: "#1a1a1d", borderRadius: 20, padding: 22, color: "white", boxShadow: "0 10px 26px -14px rgba(26,26,29,0.55)" }}>
-        <div className="meta-label" style={{ color: "#b9b9c2", marginBottom: 10, display: "flex", alignItems: "center", gap: 7, fontSize: 12 }}>
+      <section className="home-hero">
+        <div className="home-hero-eyebrow">
           <Sparkles size={13} aria-hidden />
-          ai study partner
+          your ai study partner
         </div>
-        <h1 className="page-title" style={{ color: "white", marginBottom: 6, fontSize: 28 }}>
+        <h1 className="page-title home-hero-title">
           QuizTime
         </h1>
-        <p style={{ margin: "0 0 18px", fontSize: 14.5, color: "#c8c8cf", lineHeight: 1.55, fontWeight: 500 }}>
+        <p className="home-hero-description">
           Turn your notes into flashcards that stick.
         </p>
-        <div style={{ display: "flex", gap: 10 }}>
-          <button className="btn btn-primary" style={{ flex: 1.12, background: "white", color: "#1b1b1f", fontWeight: 800 }} onClick={onUpload}>
+        <div className="home-hero-actions">
+          <button className="btn btn-primary" onClick={onUpload}>
             <Sparkles size={16} strokeWidth={2.5} aria-hidden />
             Start studying
           </button>
-          <button className="btn btn-secondary" style={{ flex: 1, background: "rgba(255,255,255,0.04)", borderColor: "rgba(255,255,255,0.25)", color: "white", fontWeight: 600 }} onClick={onSessions}>
+          <button className="btn btn-secondary" onClick={onSessions}>
             <Layers size={16} aria-hidden />
             My sets
           </button>
         </div>
-      </div>
+      </section>
 
       <Link
         href="/side-by-side"
