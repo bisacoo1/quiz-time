@@ -7,12 +7,22 @@ import type {
   PDFPageProxy,
   TextLayer,
 } from "pdfjs-dist";
+import { findPdfTextMatches } from "@/lib/side-by-side";
+
+export interface PdfSearchMatch {
+  pageNumber: number;
+  itemIndexes: number[];
+}
 
 interface PdfDocumentViewerProps {
   fileUrl: string;
   pageNumber: number;
+  searchQuery: string;
+  activeSearchMatch: number;
+  searchMatches: PdfSearchMatch[];
   onLoad: (pageCount: number) => void;
   onError: (message: string) => void;
+  onSearchResults: (matches: PdfSearchMatch[]) => void;
 }
 
 type PdfRenderTask = ReturnType<PDFPageProxy["render"]>;
@@ -20,13 +30,18 @@ type PdfRenderTask = ReturnType<PDFPageProxy["render"]>;
 export function PdfDocumentViewer({
   fileUrl,
   pageNumber,
+  searchQuery,
+  activeSearchMatch,
+  searchMatches,
   onLoad,
   onError,
+  onSearchResults,
 }: PdfDocumentViewerProps) {
   const [documentProxy, setDocumentProxy] = useState<PDFDocumentProxy | null>(null);
   const [containerWidth, setContainerWidth] = useState(720);
   const [pageWidth, setPageWidth] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [textLayerReadyPage, setTextLayerReadyPage] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const textLayerRef = useRef<HTMLDivElement>(null);
@@ -133,6 +148,7 @@ export function PdfDocumentViewer({
           viewport,
         });
         await textLayer.render();
+        if (active) setTextLayerReadyPage(pageNumber);
       } catch (error) {
         if (active && !(error instanceof Error && error.name === "RenderingCancelledException")) {
           onError(error instanceof Error ? error.message : "Couldn't render this PDF page.");
@@ -147,6 +163,66 @@ export function PdfDocumentViewer({
       if (textLayer) textLayer.cancel();
     };
   }, [containerWidth, documentProxy, onError, pageNumber]);
+
+  useEffect(() => {
+    const pdfDocument = documentProxy;
+    if (!pdfDocument) return;
+    let active = true;
+
+    async function searchDocument(pdfDocument: PDFDocumentProxy) {
+      const query = searchQuery.trim();
+      if (!query) {
+        onSearchResults([]);
+        return;
+      }
+
+      const results: PdfSearchMatch[] = [];
+      for (let pageIndex = 1; pageIndex <= pdfDocument.numPages; pageIndex += 1) {
+        const page = await pdfDocument.getPage(pageIndex);
+        const textContent = await page.getTextContent();
+        const textItems: string[] = [];
+        for (const item of textContent.items) {
+          if ("str" in item && typeof item.str === "string") textItems.push(item.str);
+        }
+        for (const itemIndexes of findPdfTextMatches(textItems, query)) {
+          results.push({ pageNumber: pageIndex, itemIndexes });
+        }
+      }
+      if (active) onSearchResults(results);
+    }
+
+    void searchDocument(pdfDocument).catch((error: unknown) => {
+      if (active) onError(error instanceof Error ? error.message : "Couldn't search this PDF.");
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [documentProxy, onError, onSearchResults, searchQuery]);
+
+  useEffect(() => {
+    const textLayer = textLayerRef.current;
+    if (!textLayer) return;
+
+    const spans = Array.from(textLayer.querySelectorAll("span"));
+    spans.forEach((span) => span.classList.remove("sbs-pdf-search-hit", "sbs-pdf-search-active"));
+    if (!searchQuery.trim()) return;
+
+    const currentMatch = searchMatches[activeSearchMatch];
+    searchMatches.forEach((match, matchIndex) => {
+      if (match.pageNumber !== pageNumber) return;
+      for (const itemIndex of match.itemIndexes) {
+        const span = spans[itemIndex];
+        if (!span) continue;
+        span.classList.add("sbs-pdf-search-hit");
+        if (matchIndex === activeSearchMatch) span.classList.add("sbs-pdf-search-active");
+      }
+    });
+    if (currentMatch?.pageNumber === pageNumber) {
+      const activeSpan = spans[currentMatch.itemIndexes[0]];
+      activeSpan?.scrollIntoView({ block: "center", inline: "nearest" });
+    }
+  }, [activeSearchMatch, pageNumber, searchMatches, searchQuery, textLayerReadyPage]);
 
   return (
     <div className="sbs-pdf-stage" ref={containerRef}>

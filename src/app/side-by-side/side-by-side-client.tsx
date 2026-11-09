@@ -11,13 +11,14 @@ import {
   FileText,
   LoaderCircle,
   MessageCircle,
+  Search,
   Send,
   Sparkles,
   Trash2,
   UploadCloud,
   X,
 } from "lucide-react";
-import { PdfDocumentViewer } from "./pdf-document-viewer";
+import { PdfDocumentViewer, type PdfSearchMatch } from "./pdf-document-viewer";
 import { DocxDocumentViewer } from "./docx-document-viewer";
 import {
   getSideBySideMimeType,
@@ -94,6 +95,10 @@ export default function SideBySideClient() {
   const [loadedDocx, setLoadedDocx] = useState<{ documentId: number; text: string } | null>(null);
   const [pageNumber, setPageNumber] = useState(1);
   const [pageCount, setPageCount] = useState(1);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchMatchIndex, setSearchMatchIndex] = useState(0);
+  const [searchMatchCount, setSearchMatchCount] = useState(0);
+  const [pdfSearchMatches, setPdfSearchMatches] = useState<PdfSearchMatch[]>([]);
   const [saveMessage, setSaveMessage] = useState("");
   const [selectedText, setSelectedText] = useState("");
   const [selectionContext, setSelectionContext] = useState("");
@@ -334,6 +339,7 @@ export default function SideBySideClient() {
       setReaderError("");
       setPageNumber(document.lastPage);
       setPageCount(Math.max(1, document.lastPage));
+      updateSearchQuery("");
       setMessages([]);
       setConversationDocumentId(null);
       setSelectedText("");
@@ -520,6 +526,33 @@ export default function SideBySideClient() {
     setPageNumber((current) => Math.min(current, count));
   }, []);
   const onPdfError = useCallback((message: string) => setReaderError(message), []);
+  const onPdfSearchResults = useCallback((matches: PdfSearchMatch[]) => {
+    setPdfSearchMatches(matches);
+    setSearchMatchCount(matches.length);
+    setSearchMatchIndex(0);
+    if (matches[0]) setPageNumber(matches[0].pageNumber);
+  }, []);
+  const onDocxSearchMatchCount = useCallback((count: number) => {
+    setSearchMatchCount(count);
+  }, []);
+
+  const navigateSearch = (direction: -1 | 1) => {
+    if (!searchMatchCount) return;
+    const nextIndex =
+      (searchMatchIndex + direction + searchMatchCount) % searchMatchCount;
+    setSearchMatchIndex(nextIndex);
+    if (activeDocumentMimeType === "application/pdf") {
+      const match = pdfSearchMatches[nextIndex];
+      if (match) setPageNumber(match.pageNumber);
+    }
+  };
+
+  const updateSearchQuery = (query: string) => {
+    setSearchQuery(query);
+    setSearchMatchIndex(0);
+    setSearchMatchCount(0);
+    setPdfSearchMatches([]);
+  };
 
   const handleDocxScroll = (lastScrollTop: number) => {
     if (!activeDocument) return;
@@ -637,6 +670,7 @@ export default function SideBySideClient() {
                       setActiveDocument(document);
                       setPageNumber(document.lastPage);
                       setPageCount(Math.max(1, document.lastPage));
+                      updateSearchQuery("");
                       setMessages([]);
                       setConversationDocumentId(null);
                       setSelectedText("");
@@ -695,6 +729,41 @@ export default function SideBySideClient() {
               <FileText size={16} aria-hidden />
               <span>{activeDocument.originalName}</span>
             </div>
+            <div className="sbs-document-search" role="search">
+              <Search size={16} aria-hidden />
+              <label className="sbs-sr-only" htmlFor="sbs-document-search-input">
+                Search in document
+              </label>
+              <input
+                id="sbs-document-search-input"
+                type="search"
+                value={searchQuery}
+                onChange={(event) => updateSearchQuery(event.target.value)}
+                placeholder="Find in document"
+                autoComplete="off"
+              />
+              <span className="sbs-search-count" aria-live="polite">
+                {searchQuery.trim()
+                  ? `${searchMatchCount ? searchMatchIndex + 1 : 0} of ${searchMatchCount}`
+                  : ""}
+              </span>
+              <button
+                type="button"
+                aria-label="Previous search result"
+                disabled={!searchMatchCount}
+                onClick={() => navigateSearch(-1)}
+              >
+                <ArrowLeft size={14} aria-hidden />
+              </button>
+              <button
+                type="button"
+                aria-label="Next search result"
+                disabled={!searchMatchCount}
+                onClick={() => navigateSearch(1)}
+              >
+                <ArrowRight size={14} aria-hidden />
+              </button>
+            </div>
             <span className="sbs-save-state" aria-live="polite">{saveMessage}</span>
             {activeDocument.mimeType === "application/pdf" && (
               <div className="sbs-page-controls" aria-label="PDF page controls">
@@ -741,8 +810,12 @@ export default function SideBySideClient() {
                   <PdfDocumentViewer
                     fileUrl={`/api/side-by-side/documents/${activeDocument.id}/file`}
                     pageNumber={pageNumber}
+                    searchQuery={searchQuery}
+                    activeSearchMatch={searchMatchIndex}
+                    searchMatches={pdfSearchMatches}
                     onLoad={onPdfLoad}
                     onError={onPdfError}
+                    onSearchResults={onPdfSearchResults}
                   />
                 ) : documentLoading ? (
                   <div className="sbs-reader-message"><LoaderCircle className="sbs-spin" /> Opening Word document…</div>
@@ -752,8 +825,11 @@ export default function SideBySideClient() {
                     documentId={activeDocument.id}
                     originalName={activeDocument.originalName}
                     text={docxText}
+                    searchQuery={searchQuery}
+                    activeSearchMatch={searchMatchIndex}
                     initialScrollTop={activeDocumentLastScrollTop}
                     onScroll={handleDocxScroll}
+                    onSearchMatchCount={onDocxSearchMatchCount}
                   />
                 )}
               </div>

@@ -61,6 +61,36 @@ export function removeTutorMarkdown(text: string): string {
     .trim();
 }
 
+export function findPdfTextMatches(textItems: string[], query: string): number[][] {
+  const normalizedQuery = query.trim().toLocaleLowerCase();
+  if (!normalizedQuery) return [];
+
+  const itemRanges: Array<{ index: number; start: number; end: number }> = [];
+  let searchableText = "";
+  for (const [index, item] of textItems.entries()) {
+    if (!item) continue;
+    if (searchableText) searchableText += " ";
+    const start = searchableText.length;
+    searchableText += item;
+    itemRanges.push({ index, start, end: searchableText.length });
+  }
+
+  const normalizedText = searchableText.toLocaleLowerCase();
+  const matches: number[][] = [];
+  let offset = 0;
+  while (offset <= normalizedText.length - normalizedQuery.length) {
+    const matchStart = normalizedText.indexOf(normalizedQuery, offset);
+    if (matchStart < 0) break;
+    const matchEnd = matchStart + normalizedQuery.length;
+    const matchedItems = itemRanges
+      .filter((range) => range.start < matchEnd && range.end > matchStart)
+      .map((range) => range.index);
+    if (matchedItems.length) matches.push(matchedItems);
+    offset = matchStart + Math.max(1, normalizedQuery.length);
+  }
+  return matches;
+}
+
 export function paginateMeasuredDocxParagraphs(
   paragraphs: string[],
   measureHeight: (text: string) => number,

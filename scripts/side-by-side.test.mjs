@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   hasSideBySideStorageCapacity,
+  findPdfTextMatches,
   getSideBySideMimeType,
   isSideBySideMimeType,
   paginateMeasuredDocxParagraphs,
@@ -84,6 +85,15 @@ test("tutor answers display cleanly without Markdown markers", () => {
     removeTutorMarkdown(input),
     "What the Passage Means\nThe CECS Fee Tracker is a computer program.\n\nPurpose: Tracks fees.\nTechnology: Uses Python.\n\nRead more"
   );
+});
+
+test("PDF text search finds case-insensitive matches across text spans", () => {
+  assert.deepEqual(findPdfTextMatches(["The", "study", "guide", "study guide"], "study guide"), [
+    [1, 2],
+    [3],
+  ]);
+  assert.deepEqual(findPdfTextMatches(["Nothing matches"], "missing"), []);
+  assert.deepEqual(findPdfTextMatches(["A word"], "  WORD "), [[0]]);
 });
 
 test("DOCX pagination uses measured paragraph heights and preserves text", () => {

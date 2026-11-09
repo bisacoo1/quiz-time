@@ -203,6 +203,8 @@ are stored in a private Vercel Blob store and tied to the signed-in account.
 Select text in the reader and choose **Explain with AI** to ask the tutor about
 it. Follow-up questions stay grounded in the selected passage. PDF page
 position and DOCX scroll position are saved so reading can resume later.
+Use **Find in document** to locate and navigate highlighted text in either
+format.
 DOCX pages are split according to their rendered text height while retaining
 paragraphs, and page numbers are shown in the reader. Tutor conversations are
 saved per document and restored when that document is reopened; use the trash

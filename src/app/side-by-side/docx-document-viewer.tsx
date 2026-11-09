@@ -7,8 +7,17 @@ interface DocxDocumentViewerProps {
   documentId: number;
   originalName: string;
   text: string;
+  searchQuery: string;
+  activeSearchMatch: number;
   initialScrollTop: number;
   onScroll: (scrollTop: number) => void;
+  onSearchMatchCount: (count: number) => void;
+}
+
+interface TextMatch {
+  start: number;
+  end: number;
+  index: number;
 }
 
 function getParagraphs(text: string): string[] {
@@ -29,16 +38,54 @@ function getOuterHeight(element: HTMLElement | null | undefined): number {
   );
 }
 
+function findTextMatches(text: string, query: string): Array<{ start: number; end: number }> {
+  const normalizedQuery = query.trim().toLocaleLowerCase();
+  if (!normalizedQuery) return [];
+  const normalizedText = text.toLocaleLowerCase();
+  const matches: Array<{ start: number; end: number }> = [];
+  let offset = 0;
+  while (offset <= normalizedText.length - normalizedQuery.length) {
+    const start = normalizedText.indexOf(normalizedQuery, offset);
+    if (start < 0) break;
+    matches.push({ start, end: start + normalizedQuery.length });
+    offset = start + Math.max(1, normalizedQuery.length);
+  }
+  return matches;
+}
+
 export function DocxDocumentViewer({
   documentId,
   originalName,
   text,
+  searchQuery,
+  activeSearchMatch,
   initialScrollTop,
   onScroll,
+  onSearchMatchCount,
 }: DocxDocumentViewerProps) {
   const paragraphs = useMemo(() => getParagraphs(text), [text]);
   const [pages, setPages] = useState<string[][]>([]);
   const [containerWidth, setContainerWidth] = useState(0);
+  const pageMatches = useMemo(() => {
+    const query = searchQuery.trim().toLocaleLowerCase();
+    const localMatches = pages.map((page) =>
+      page.map((paragraph) => findTextMatches(paragraph, query))
+    );
+    const pageOffsets = localMatches.map((_, pageIndex) =>
+      localMatches.slice(0, pageIndex).flat(2).length
+    );
+    return localMatches.map((page, pageIndex) =>
+      page.map((matches, paragraphIndex) => {
+        const paragraphOffset =
+          pageOffsets[pageIndex] + page.slice(0, paragraphIndex).flat().length;
+        return matches.map((match, matchIndex) => ({
+          ...match,
+          index: paragraphOffset + matchIndex,
+        }));
+      })
+    );
+  }, [pages, searchQuery]);
+  const searchMatchCount = pageMatches.flat(2).length;
   const scrollRef = useRef<HTMLDivElement>(null);
   const measurePageRef = useRef<HTMLElement>(null);
   const restoredDocumentRef = useRef<number | null>(null);
@@ -111,6 +158,37 @@ export function DocxDocumentViewer({
     restoredDocumentRef.current = documentId;
   }, [documentId, initialScrollTop, pages.length]);
 
+  useEffect(() => {
+    onSearchMatchCount(searchMatchCount);
+  }, [onSearchMatchCount, searchMatchCount]);
+
+  useEffect(() => {
+    if (activeSearchMatch < 0 || !searchQuery.trim()) return;
+    scrollRef.current
+      ?.querySelector<HTMLElement>(`[data-search-match-index="${activeSearchMatch}"]`)
+      ?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [activeSearchMatch, pages, searchQuery]);
+
+  const renderParagraph = (paragraph: string, matches: TextMatch[]) => {
+    if (!matches.length) return paragraph;
+    const parts = [];
+    let cursor = 0;
+    for (const match of matches) {
+      if (match.start > cursor) parts.push(paragraph.slice(cursor, match.start));
+      parts.push(
+        <mark
+          className={match.index === activeSearchMatch ? "sbs-search-match sbs-search-match-active" : "sbs-search-match"}
+          data-search-match-index={match.index}
+          key={match.index}
+        >
+          {paragraph.slice(match.start, match.end)}
+        </mark>
+      );
+      cursor = match.end;
+    }
+    if (cursor < paragraph.length) parts.push(paragraph.slice(cursor));
+    return parts;
+  };
   return (
     <div
       ref={scrollRef}
@@ -124,7 +202,9 @@ export function DocxDocumentViewer({
           {index === 0 && <h2>{originalName}</h2>}
           <div className="sbs-docx-page-body">
             {page.map((paragraph, paragraphIndex) => (
-              <p className="sbs-docx-page-text" key={paragraphIndex}>{paragraph}</p>
+              <p className="sbs-docx-page-text" key={`${index}-${paragraphIndex}`}>
+                {renderParagraph(paragraph, pageMatches[index]?.[paragraphIndex] ?? [])}
+              </p>
             ))}
           </div>
           <footer className="sbs-docx-page-number">Page {index + 1}</footer>
