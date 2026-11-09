@@ -4,6 +4,7 @@ import {
   hasSideBySideStorageCapacity,
   getSideBySideMimeType,
   isSideBySideMimeType,
+  paginateDocxText,
   removeTutorMarkdown,
   sanitizeDocumentName,
   SIDE_BY_SIDE_MAX_FILE_BYTES,
@@ -83,4 +84,18 @@ test("tutor answers display cleanly without Markdown markers", () => {
     removeTutorMarkdown(input),
     "What the Passage Means\nThe CECS Fee Tracker is a computer program.\n\nPurpose: Tracks fees.\nTechnology: Uses Python.\n\nRead more"
   );
+});
+
+test("DOCX text is divided into numbered-page-sized chunks without losing content", () => {
+  const text = `${"First paragraph. ".repeat(60)}\n\n${"Second paragraph. ".repeat(60)}`;
+  const pages = paginateDocxText(text);
+  assert.ok(pages.length > 1);
+  assert.ok(pages.every((page) => page.length <= 1600));
+  assert.equal(pages.join("").replace(/\s/g, ""), text.replace(/\s/g, ""));
+});
+
+test("DOCX pagination handles empty input and unusually long unbroken text", () => {
+  assert.deepEqual(paginateDocxText(" \n\n "), []);
+  const pages = paginateDocxText("x".repeat(3201));
+  assert.deepEqual(pages.map((page) => page.length), [1600, 1600, 1]);
 });

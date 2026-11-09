@@ -25,6 +25,7 @@ export function PdfDocumentViewer({
 }: PdfDocumentViewerProps) {
   const [documentProxy, setDocumentProxy] = useState<PDFDocumentProxy | null>(null);
   const [containerWidth, setContainerWidth] = useState(720);
+  const [pageWidth, setPageWidth] = useState(0);
   const [loading, setLoading] = useState(true);
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -102,6 +103,7 @@ export function PdfDocumentViewer({
         const unscaledViewport = page.getViewport({ scale: 1 });
         const scale = Math.min((containerWidth - 24) / unscaledViewport.width, 1.8);
         const viewport = page.getViewport({ scale: Math.max(scale, 0.4) });
+        setPageWidth(Math.ceil(viewport.width));
         const pixelRatio = window.devicePixelRatio || 1;
         const context = canvas.getContext("2d");
         if (!context) throw new Error("This browser couldn't prepare the PDF viewer.");
@@ -149,9 +151,12 @@ export function PdfDocumentViewer({
   return (
     <div className="sbs-pdf-stage" ref={containerRef}>
       {loading && <p className="sbs-reader-status">Opening PDF…</p>}
-      <div className="sbs-pdf-page" aria-label={`PDF page ${pageNumber}`}>
-        <canvas ref={canvasRef} className="sbs-pdf-canvas" />
-        <div ref={textLayerRef} className="sbs-pdf-text-layer" />
+      <div className="sbs-pdf-sheet" style={pageWidth ? { width: pageWidth } : undefined}>
+        <div className="sbs-pdf-page" aria-label={`PDF page ${pageNumber}`}>
+          <canvas ref={canvasRef} className="sbs-pdf-canvas" />
+          <div ref={textLayerRef} className="sbs-pdf-text-layer" />
+        </div>
+        <footer className="sbs-pdf-page-number">Page {pageNumber}</footer>
       </div>
     </div>
   );

@@ -3122,8 +3122,16 @@ body.maintenance-active {
   text-align: center;
 }
 .sbs-pdf-stage { display: flex; justify-content: center; min-height: 100%; padding: 24px 12px; }
-.sbs-pdf-page { position: relative; flex: 0 0 auto; width: max-content; min-height: 100px; background: white; box-shadow: 0 4px 20px rgba(31, 29, 47, .12); }
+.sbs-pdf-sheet { flex: 0 0 auto; align-self: flex-start; background: white; box-shadow: 0 4px 20px rgba(31, 29, 47, .12); }
+.sbs-pdf-page { position: relative; width: max-content; min-height: 100px; background: white; }
 .sbs-pdf-canvas { display: block; }
+.sbs-pdf-page-number, .sbs-docx-page-number {
+  padding: 9px 12px;
+  border-top: 1px solid #dcdbe2;
+  color: #777487;
+  font: 11px/1.4 var(--font-body);
+  text-align: center;
+}
 .sbs-pdf-text-layer {
   position: absolute;
   inset: 0;
@@ -3157,8 +3165,8 @@ body.maintenance-active {
 .sbs-docx-scroll { width: 100%; height: 100%; overflow: auto; padding: 28px 16px; }
 .sbs-docx-page {
   width: min(100%, 780px);
-  min-height: 100%;
-  margin: 0 auto;
+  min-height: min(1040px, calc(100dvh - 220px));
+  margin: 0 auto 24px;
   padding: clamp(26px, 5vw, 64px);
   background: white;
   box-shadow: 0 4px 20px rgba(31, 29, 47, .10);
@@ -3170,6 +3178,8 @@ body.maintenance-active {
   overflow-wrap: anywhere;
 }
 .sbs-docx-page h2 { margin: 0 0 24px; color: #373544; font-family: var(--font-display); font-size: 17px; overflow-wrap: anywhere; }
+.sbs-docx-page-text { min-height: 1em; }
+.sbs-docx-page-number { margin-top: 36px; }
 .sbs-explain-selection {
   position: fixed;
   z-index: 220;

@@ -60,3 +60,61 @@ export function removeTutorMarkdown(text: string): string {
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 }
+
+const DOCX_PAGE_CHARACTER_LIMIT = 1600;
+
+export function paginateDocxText(text: string): string[] {
+  const paragraphs = text.replace(/\r\n?/g, "\n").split(/\n\s*\n/);
+  const pages: string[] = [];
+  let currentPage = "";
+
+  const appendParagraph = (paragraph: string) => {
+    const nextPage = currentPage ? `${currentPage}\n\n${paragraph}` : paragraph;
+    if (nextPage.length <= DOCX_PAGE_CHARACTER_LIMIT) {
+      currentPage = nextPage;
+      return;
+    }
+
+    if (currentPage) {
+      pages.push(currentPage);
+      currentPage = "";
+    }
+
+    if (paragraph.length <= DOCX_PAGE_CHARACTER_LIMIT) {
+      currentPage = paragraph;
+      return;
+    }
+
+    const words = paragraph.match(/\S+\s*/g) ?? [];
+    for (const word of words) {
+      if (word.length > DOCX_PAGE_CHARACTER_LIMIT) {
+        if (currentPage) {
+          pages.push(currentPage);
+          currentPage = "";
+        }
+        for (let offset = 0; offset < word.length; offset += DOCX_PAGE_CHARACTER_LIMIT) {
+          const chunk = word.slice(offset, offset + DOCX_PAGE_CHARACTER_LIMIT);
+          if (chunk.length === DOCX_PAGE_CHARACTER_LIMIT) pages.push(chunk);
+          else currentPage = chunk;
+        }
+        continue;
+      }
+
+      const nextChunk = currentPage ? `${currentPage}${word}` : word;
+      if (nextChunk.length > DOCX_PAGE_CHARACTER_LIMIT && currentPage) {
+        pages.push(currentPage);
+        currentPage = word;
+      } else {
+        currentPage = nextChunk;
+      }
+    }
+  };
+
+  for (const paragraph of paragraphs) {
+    const normalized = paragraph.trim();
+    if (normalized) appendParagraph(normalized);
+  }
+  if (currentPage) pages.push(currentPage);
+
+  return pages;
+}

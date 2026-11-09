@@ -20,6 +20,7 @@ import {
 import { PdfDocumentViewer } from "./pdf-document-viewer";
 import {
   getSideBySideMimeType,
+  paginateDocxText,
   sanitizeDocumentName,
   SIDE_BY_SIDE_MAX_FILE_BYTES,
   SIDE_BY_SIDE_STORAGE_LIMIT_BYTES,
@@ -111,6 +112,7 @@ export default function SideBySideClient() {
   const activeDocumentLastScrollTop = activeDocument?.lastScrollTop ?? 0;
   const docxText =
     loadedDocx && loadedDocx.documentId === activeDocumentId ? loadedDocx.text : "";
+  const docxPages = paginateDocxText(docxText);
   const documentLoading =
     activeDocumentMimeType === DOCX_MIME &&
     loadedDocx?.documentId !== activeDocumentId &&
@@ -663,10 +665,13 @@ export default function SideBySideClient() {
                     tabIndex={0}
                     aria-label="Word document text"
                   >
-                    <article className="sbs-docx-page">
-                      <h2>{activeDocument.originalName}</h2>
-                      <div>{docxText}</div>
-                    </article>
+                    {docxPages.map((text, index) => (
+                      <article className="sbs-docx-page" key={`${activeDocument.id}-${index}`}>
+                        {index === 0 && <h2>{activeDocument.originalName}</h2>}
+                        <div className="sbs-docx-page-text">{text}</div>
+                        <footer className="sbs-docx-page-number">Page {index + 1}</footer>
+                      </article>
+                    ))}
                   </div>
                 )}
               </div>
