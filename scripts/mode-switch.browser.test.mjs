@@ -57,7 +57,7 @@ const DUE_CARDS = CARDS.slice(0, 3).map((card) => ({
 
 const TABS = ["Study", "Exam", "Identify", "Enumerate", "Review"];
 
-async function openDeckInStudyMode(page) {
+async function openDeckInStudyMode(page, stopAtModeSelection = false) {
   await page.addInitScript(() => {
     sessionStorage.setItem("quiztime-mascot-greeted:mode-switch-test", "1");
     localStorage.setItem("quiztime:course-asked", "1");
@@ -103,8 +103,10 @@ async function openDeckInStudyMode(page) {
   await page.getByRole("button", { name: "My Sets", exact: true }).evaluate((el) => el.click());
   await page.getByText(SESSION.title).click();
   // The mode row only exists once a mode has been picked from the picker.
-  await page.getByRole("button", { name: /Study Mode/ }).click();
-  await expect(page.locator(".mode-switch")).toBeVisible();
+  if (!stopAtModeSelection) {
+    await page.getByRole("button", { name: /Study Mode/ }).click();
+    await expect(page.locator(".mode-switch")).toBeVisible();
+  }
 }
 
 /** Row + tabs as the browser laid them out — no assumptions about the fix. */
@@ -347,5 +349,34 @@ test.describe("quiz mode row", () => {
       el.scrollLeft = el.scrollWidth;
     });
     await expect.poll(async () => (await read()).fades).toEqual(["left"]);
+  });
+});
+
+test.describe("interrupted exam recovery", () => {
+  test("resumes the saved question and keeps the original timer deadline", async ({ page }) => {
+    await openDeckInStudyMode(page, true);
+    await page.getByRole("button", { name: "10 min", exact: true }).click();
+    await page.getByRole("button", { name: /Exam Mode/ }).click();
+    await page.locator(".choice").first().click();
+
+    await expect.poll(async () => page.evaluate(() => {
+      const saved = localStorage.getItem("quiztime:unfinished-exam");
+      return saved ? JSON.parse(saved).answers.length : 0;
+    })).toBe(1);
+    const savedDeadline = await page.evaluate(() =>
+      JSON.parse(localStorage.getItem("quiztime:unfinished-exam")).deadline
+    );
+
+    await page.reload();
+    await page.getByRole("button", { name: "Resume", exact: true }).click();
+    await expect(page.getByText("Question 1 of 6")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Next Question" })).toBeVisible();
+    await expect(page.getByRole("timer")).toBeVisible();
+    expect(await page.evaluate(() =>
+      JSON.parse(localStorage.getItem("quiztime:unfinished-exam")).deadline
+    )).toBe(savedDeadline);
+
+    await page.getByRole("button", { name: "Next Question" }).click();
+    await expect(page.getByText("Question 2 of 6")).toBeVisible();
   });
 });

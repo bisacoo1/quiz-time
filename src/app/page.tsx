@@ -223,6 +223,24 @@ interface ExamAnswer {
   userItems?: string[];
 }
 
+interface ExamResumeDraft {
+  version: 1;
+  sessionId?: number;
+  title: string;
+  summary: string;
+  cards: Flashcard[];
+  questions: ExamQuestion[];
+  index: number;
+  answers: ExamAnswer[];
+  score: number;
+  maxScore: number;
+  streak: number;
+  bestStreak: number;
+  startedAt: number;
+  deadline: number | null;
+  timerMinutes: number;
+}
+
 interface IdentifySubmission {
   typed: string;
   isCorrect: boolean;
@@ -251,6 +269,46 @@ const FALLBACK_OPTIONS = [
   "Not mentioned in the material",
   "It cannot be determined",
 ];
+
+const EXAM_RESUME_KEY = "quiztime:unfinished-exam";
+
+function loadExamResumeDraft(): ExamResumeDraft | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(EXAM_RESUME_KEY);
+    if (!raw) return null;
+    const draft = JSON.parse(raw) as Partial<ExamResumeDraft>;
+    if (
+      draft.version === 1 &&
+      typeof draft.title === "string" &&
+      Array.isArray(draft.cards) &&
+      Array.isArray(draft.questions) &&
+      draft.questions.length > 0 &&
+      Number.isInteger(draft.index) &&
+      (draft.index ?? -1) >= 0 &&
+      (draft.index ?? Infinity) < draft.questions.length &&
+      Array.isArray(draft.answers) &&
+      typeof draft.startedAt === "number" &&
+      (draft.deadline === null || typeof draft.deadline === "number")
+    ) {
+      return draft as ExamResumeDraft;
+    }
+  } catch {
+    // A corrupted local draft should not prevent the app from opening.
+  }
+  return null;
+}
+
+function persistExamResumeDraft(draft: ExamResumeDraft | null): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    if (draft) window.localStorage.setItem(EXAM_RESUME_KEY, JSON.stringify(draft));
+    else window.localStorage.removeItem(EXAM_RESUME_KEY);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 const normalize = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
 
@@ -3866,6 +3924,8 @@ function QuizPage({
   title,
   summary,
   initialMode,
+  resumeDraft,
+  onResumeDraftChange,
   baselineAccuracy,
   online,
   offlineDeck,
@@ -3878,6 +3938,8 @@ function QuizPage({
   title: string;
   summary: string;
   initialMode?: ScoredMode;
+  resumeDraft?: ExamResumeDraft | null;
+  onResumeDraftChange: (draft: ExamResumeDraft | null) => void;
   baselineAccuracy?: number;
   online: boolean;
   /** This deck was loaded from the device cache rather than the server. */
@@ -3887,7 +3949,7 @@ function QuizPage({
   /** Open the deck editor for this saved deck (rename / add / edit / reorder cards). */
   onEditDeck?: () => void;
 }) {
-  const [mode, setMode] = useState<QuizMode>(initialMode ?? "select");
+  const [mode, setMode] = useState<QuizMode>(resumeDraft ? "exam" : initialMode ?? "select");
   /** One "you're offline" toast per deck visit, not one per answer. */
   const queuedNotice = useRef(false);
   /** Consecutive misses inside the current scored run (Nibbles' pep talk). */
@@ -3913,26 +3975,29 @@ function QuizPage({
 
   // Exam mode
   const [examQuestions, setExamQuestions] = useState<ExamQuestion[]>(() =>
-    initialMode === "exam" ? buildExamQuestions(cards) : []
+    resumeDraft?.questions ?? (initialMode === "exam" ? buildExamQuestions(cards) : [])
   );
-  const [examIndex, setExamIndex] = useState(0);
-  const [answers, setAnswers] = useState<ExamAnswer[]>([]);
-  const [score, setScore] = useState(0);
+  const [examIndex, setExamIndex] = useState(resumeDraft?.index ?? 0);
+  const [answers, setAnswers] = useState<ExamAnswer[]>(resumeDraft?.answers ?? []);
+  const [score, setScore] = useState(resumeDraft?.score ?? 0);
   const [maxScore, setMaxScore] = useState(() =>
-    initialMode === "exam"
+    resumeDraft
+      ? resumeDraft.maxScore
+      : initialMode === "exam"
       ? cards.reduce((sum, card, index) => sum + pointsFor(card) + (index === 0 ? 0 : Math.min(index * 2, 10)), 0)
       : 0
   );
-  const [streak, setStreak] = useState(0);
-  const [bestStreak, setBestStreak] = useState(0);
+  const [streak, setStreak] = useState(resumeDraft?.streak ?? 0);
+  const [bestStreak, setBestStreak] = useState(resumeDraft?.bestStreak ?? 0);
   const [examDone, setExamDone] = useState(false);
-  const [startedAt, setStartedAt] = useState(() => Date.now());
+  const [startedAt, setStartedAt] = useState(() => resumeDraft?.startedAt ?? Date.now());
   const [elapsed, setElapsed] = useState(0);
-  const [examTimerMinutes, setExamTimerMinutes] = useState(0);
-  const [timerDeadline, setTimerDeadline] = useState<number | null>(null);
+  const [examTimerMinutes, setExamTimerMinutes] = useState(resumeDraft?.timerMinutes ?? 0);
+  const [timerDeadline, setTimerDeadline] = useState<number | null>(resumeDraft?.deadline ?? null);
   const [timeRemaining, setTimeRemaining] = useState(0);
   const [timedOut, setTimedOut] = useState(false);
   const [runStartVersion, setRunStartVersion] = useState(0);
+  const hasResumeDraft = Boolean(resumeDraft);
 
   useEffect(() => {
     if (runStartVersion === 0) return;
@@ -3964,6 +4029,59 @@ function QuizPage({
     const interval = window.setInterval(updateRemaining, 250);
     return () => window.clearInterval(interval);
   }, [mode, examDone, timerDeadline, startedAt]);
+
+  useEffect(() => {
+    if (mode === "exam" && examDone) {
+      onResumeDraftChange(null);
+      return;
+    }
+    if (
+      mode !== "exam" ||
+      examDone ||
+      examQuestions.length === 0 ||
+      (runStartVersion === 0 && initialMode !== "exam" && !hasResumeDraft)
+    ) {
+      return;
+    }
+    onResumeDraftChange({
+      version: 1,
+      sessionId,
+      title,
+      summary,
+      cards,
+      questions: examQuestions,
+      index: examIndex,
+      answers,
+      score,
+      maxScore,
+      streak,
+      bestStreak,
+      startedAt,
+      deadline: timerDeadline,
+      timerMinutes: examTimerMinutes,
+    });
+  }, [
+    mode,
+    examDone,
+    examQuestions,
+    runStartVersion,
+    initialMode,
+    hasResumeDraft,
+    sessionId,
+    title,
+    summary,
+    cards,
+    examIndex,
+    answers,
+    score,
+    maxScore,
+    streak,
+    bestStreak,
+    startedAt,
+    timerDeadline,
+    examTimerMinutes,
+    onResumeDraftChange,
+  ]);
 
   // Load progress from server if we have a sessionId; the snapshot saved on
   // this device answers when there's no network.
@@ -7294,6 +7412,9 @@ function HomePage({
   onUpload,
   onSessions,
   onReview,
+  unfinishedExam,
+  onResumeExam,
+  onDiscardExam,
   dueCount,
   online,
   offlineDeckCount,
@@ -7307,6 +7428,9 @@ function HomePage({
   onUpload: () => void;
   onSessions: () => void;
   onReview: () => void;
+  unfinishedExam: ExamResumeDraft | null;
+  onResumeExam: () => void;
+  onDiscardExam: () => void;
   dueCount: number;
   online: boolean;
   offlineDeckCount: number;
@@ -7346,6 +7470,35 @@ function HomePage({
           </button>
         </div>
       </div>
+
+      {unfinishedExam && (
+        <div
+          className="animate-fade-in"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            padding: "14px 16px",
+            borderRadius: 16,
+            background: "#eef2ff",
+            border: "1px solid #c7d2fe",
+          }}
+        >
+          <Timer size={22} aria-hidden style={{ color: "#4338ca", flexShrink: 0 }} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <p style={{ margin: 0, fontSize: 14, fontWeight: 800 }}>Unfinished exam</p>
+            <p style={{ margin: "2px 0 0", fontSize: 12, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {unfinishedExam.title} · {unfinishedExam.answers.length}/{unfinishedExam.questions.length} answered
+            </p>
+          </div>
+          <button type="button" className="btn btn-primary btn-sm" onClick={onResumeExam}>
+            Resume
+          </button>
+          <button type="button" className="btn btn-ghost btn-sm" aria-label="Discard unfinished exam" onClick={onDiscardExam}>
+            <Trash />
+          </button>
+        </div>
+      )}
 
       {/* Course — neutral card, tap to change */}
       <button
@@ -8111,15 +8264,50 @@ export default function App() {
   // frame after mount instead — the same pattern IOSInstallPrompt documents:
   // first client render matches the server, then the banner fades in.
   const [draft, setDraft] = useState<PendingDeck | null>(null);
+  const [resumeExamDraft, setResumeExamDraft] = useState<ExamResumeDraft | null>(null);
+  const [pendingResumeExam, setPendingResumeExam] = useState<ExamResumeDraft | null>(null);
   useEffect(() => {
     const frame = requestAnimationFrame(() => {
       const restored = loadDraft();
       if (restored) setDraft(restored);
+      const restoredExam = loadExamResumeDraft();
+      if (restoredExam) setResumeExamDraft(restoredExam);
     });
     return () => cancelAnimationFrame(frame);
   }, []);
 
+  const handleResumeDraftChange = useCallback((nextDraft: ExamResumeDraft | null) => {
+    if (!persistExamResumeDraft(nextDraft)) {
+      showToast(
+        nextDraft ? "Could not save this exam on your device" : "Could not remove the saved exam",
+        CircleX
+      );
+      if (nextDraft) setResumeExamDraft(nextDraft);
+      return;
+    }
+    setResumeExamDraft(nextDraft);
+  }, []);
+
+  const handleResumeExam = () => {
+    if (!resumeExamDraft) return;
+    const saved = resumeExamDraft;
+    setPendingResumeExam(saved);
+    setActiveSessionId(saved.sessionId ?? null);
+    setActiveSessionCards(saved.sessionId ? saved.cards : null);
+    setActiveSessionTitle(saved.title);
+    setActiveSessionSummary(saved.summary);
+    setActiveSessionOffline(false);
+    setPendingCards(saved.sessionId ? null : saved.cards);
+    setPendingTitle(saved.title);
+    setPendingSummary(saved.summary);
+    setPendingReview(false);
+    setWeakSpotPractice(false);
+    setDeckKey((key) => key + 1);
+    setTab("quiz");
+  };
+
   const handleCardsReady = (cards: Flashcard[], title: string, summary: string, sourceType: string) => {
+    setPendingResumeExam(null);
     setPendingCards(cards);
     setPendingReview(false);
     setPendingTitle(title);
@@ -8214,6 +8402,7 @@ export default function App() {
       setActiveSessionTitle(data.session.title);
       setActiveSessionSummary(data.session.summary ?? "");
       setActiveSessionOffline(data.offline);
+      setPendingResumeExam(null);
       setWeakSpotPractice(false);
       setPendingCards(null);
       setDeckKey((k) => k + 1);
@@ -8246,6 +8435,7 @@ export default function App() {
     setActiveSessionId(null);
     setActiveSessionCards(null);
     setActiveSessionOffline(false);
+    setPendingResumeExam(null);
     setWeakSpotPractice(true);
     setWeakSpotBaselineAccuracy(attempts > 0 ? Math.round((correct / attempts) * 100) : 0);
     setDeckKey((key) => key + 1);
@@ -8401,6 +8591,8 @@ export default function App() {
           cards={cards}
           title={title}
           summary={summary}
+          resumeDraft={pendingResumeExam}
+          onResumeDraftChange={handleResumeDraftChange}
           initialMode={weakSpotPractice ? "exam" : undefined}
           baselineAccuracy={weakSpotBaselineAccuracy ?? undefined}
           online={online}
@@ -8439,6 +8631,9 @@ export default function App() {
           onUpload={() => setTab("upload")}
           onSessions={() => setTab("sessions")}
           onReview={() => setTab("review")}
+          unfinishedExam={resumeExamDraft}
+          onResumeExam={handleResumeExam}
+          onDiscardExam={() => handleResumeDraftChange(null)}
           dueCount={dueCount}
           online={online}
           offlineDeckCount={offlineInfo.deckCount}
