@@ -103,6 +103,7 @@ export default function SideBySideClient() {
   const [selectedText, setSelectedText] = useState("");
   const [selectionContext, setSelectionContext] = useState("");
   const [selectionAction, setSelectionAction] = useState<{ left: number; top: number } | null>(null);
+  const [selectionExplained, setSelectionExplained] = useState(false);
   const [messages, setMessages] = useState<TutorMessage[]>([]);
   const [conversationDocumentId, setConversationDocumentId] = useState<number | null>(null);
   const [question, setQuestion] = useState("");
@@ -111,6 +112,7 @@ export default function SideBySideClient() {
   const [tutorError, setTutorError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const readerContentRef = useRef<HTMLDivElement>(null);
+  const aiPanelRef = useRef<HTMLElement>(null);
   const progressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scrollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeDocumentId = activeDocument?.id;
@@ -407,6 +409,7 @@ export default function SideBySideClient() {
       const range = selection.getRangeAt(0);
       const rect = range.getBoundingClientRect();
       const left = Math.min(Math.max(rect.left + rect.width / 2 - 88, 12), window.innerWidth - 188);
+      if (text !== selectedText || !selectionAction) setSelectionExplained(false);
       setSelectedText(text);
       setTutorError("");
 
@@ -437,7 +440,7 @@ export default function SideBySideClient() {
     setQuestion("");
     setTutorBusy(true);
     setTutorError("");
-    setSelectionAction(null);
+    setSelectionExplained(true);
 
     try {
       const response = await fetch("/api/side-by-side/explain", {
@@ -475,8 +478,16 @@ export default function SideBySideClient() {
         ...current.slice(0, -1),
         ...(body.messages as TutorMessage[]),
       ]);
+      setSelectionAction(null);
+      window.getSelection()?.removeAllRanges();
+      if (window.matchMedia("(max-width: 760px)").matches) {
+        window.requestAnimationFrame(() => {
+          aiPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+        });
+      }
     } catch (cause) {
       setMessages(nextMessages.slice(0, -1));
+      setSelectionExplained(false);
       setTutorError(cause instanceof Error ? cause.message : "The AI tutor couldn't respond.");
     } finally {
       setTutorBusy(false);
@@ -800,7 +811,7 @@ export default function SideBySideClient() {
             <section className="sbs-reader-panel" aria-label="Document reader">
               <div
                 ref={readerContentRef}
-                className="sbs-reader-content"
+                className={`sbs-reader-content${activeDocument.mimeType === DOCX_MIME ? " sbs-reader-content-docx" : ""}`}
                 onMouseUp={handleReaderSelection}
                 onTouchEnd={handleReaderSelection}
               >
@@ -833,7 +844,7 @@ export default function SideBySideClient() {
                   />
                 )}
               </div>
-              {selectionAction && selectedText && (
+              {selectionAction && selectedText && !selectionExplained && !tutorBusy && (
                 <button
                   type="button"
                   className="sbs-explain-selection"
@@ -846,7 +857,7 @@ export default function SideBySideClient() {
               )}
             </section>
 
-            <aside className="sbs-ai-panel" aria-label="AI explanation panel">
+            <aside ref={aiPanelRef} className="sbs-ai-panel" aria-label="AI explanation panel">
               <div className={`sbs-ai-heading${messages.length ? " sbs-ai-heading-has-chat" : ""}`}>
                 <span className="sbs-ai-icon"><Sparkles size={17} aria-hidden /></span>
                 <div>
