@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import {
   ArrowDown,
@@ -45,7 +46,14 @@ export function LandingPage() {
     <main className="landing-page">
       <header className="landing-header">
         <Link className="landing-brand" href="/" aria-label="QuizTime home">
-          <span className="landing-brand-mark"><BookOpenCheck size={21} aria-hidden /></span>
+          <Image
+            className="landing-brand-logo"
+            src="/images/logo.png"
+            alt=""
+            width={40}
+            height={40}
+            priority
+          />
           <span>QuizTime</span>
         </Link>
         <nav className="landing-nav" aria-label="Main navigation">
@@ -154,7 +162,13 @@ export function LandingPage() {
 
       <footer className="landing-footer">
         <Link className="landing-brand" href="/" aria-label="QuizTime home">
-          <span className="landing-brand-mark"><BookOpenCheck size={18} aria-hidden /></span>
+          <Image
+            className="landing-brand-logo"
+            src="/images/logo.png"
+            alt=""
+            width={32}
+            height={32}
+          />
           <span>QuizTime</span>
         </Link>
         <p>Made for curious minds and one-card-at-a-time progress.</p>
