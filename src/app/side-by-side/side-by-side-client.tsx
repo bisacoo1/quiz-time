@@ -102,6 +102,7 @@ export default function SideBySideClient() {
   const [conversationDocumentId, setConversationDocumentId] = useState<number | null>(null);
   const [question, setQuestion] = useState("");
   const [tutorBusy, setTutorBusy] = useState(false);
+  const [deletingConversation, setDeletingConversation] = useState(false);
   const [tutorError, setTutorError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const readerContentRef = useRef<HTMLDivElement>(null);
@@ -481,6 +482,39 @@ export default function SideBySideClient() {
     void askTutor(question);
   };
 
+  const deleteConversation = async () => {
+    if (
+      !activeDocument ||
+      conversationLoading ||
+      tutorBusy ||
+      deletingConversation ||
+      messages.length === 0
+    ) {
+      return;
+    }
+    if (!window.confirm(`Delete the tutor chat for “${activeDocument.originalName}”? This can't be undone.`)) {
+      return;
+    }
+
+    setDeletingConversation(true);
+    setTutorError("");
+    try {
+      const response = await fetch(
+        `/api/side-by-side/documents/${activeDocument.id}/conversation`,
+        { method: "DELETE" }
+      );
+      const body: unknown = await response.json();
+      if (!response.ok) {
+        throw new Error(errorFromResponse(body, "Couldn't delete this tutor conversation."));
+      }
+      setMessages([]);
+    } catch (cause) {
+      setTutorError(cause instanceof Error ? cause.message : "Couldn't delete this tutor conversation.");
+    } finally {
+      setDeletingConversation(false);
+    }
+  };
+
   const onPdfLoad = useCallback((count: number) => {
     setPageCount(count);
     setPageNumber((current) => Math.min(current, count));
@@ -737,12 +771,26 @@ export default function SideBySideClient() {
             </section>
 
             <aside className="sbs-ai-panel" aria-label="AI explanation panel">
-              <div className="sbs-ai-heading">
+              <div className={`sbs-ai-heading${messages.length ? " sbs-ai-heading-has-chat" : ""}`}>
                 <span className="sbs-ai-icon"><Sparkles size={17} aria-hidden /></span>
                 <div>
                   <h2>AI Study Partner</h2>
                   <p>Grounded in your selected passage</p>
                 </div>
+                {messages.length > 0 && (
+                  <button
+                    type="button"
+                    className="sbs-clear-chat"
+                    aria-label="Delete tutor chat"
+                    title="Delete tutor chat"
+                    disabled={conversationLoading || tutorBusy || deletingConversation}
+                    onClick={() => void deleteConversation()}
+                  >
+                    {deletingConversation
+                      ? <LoaderCircle className="sbs-spin" size={16} />
+                      : <Trash2 size={16} aria-hidden />}
+                  </button>
+                )}
                 {selectedText && (
                   <button
                     type="button"

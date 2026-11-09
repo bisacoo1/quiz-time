@@ -205,7 +205,8 @@ it. Follow-up questions stay grounded in the selected passage. PDF page
 position and DOCX scroll position are saved so reading can resume later.
 DOCX pages are split according to their rendered text height while retaining
 paragraphs, and page numbers are shown in the reader. Tutor conversations are
-saved per document and restored when that document is reopened. Documents can
+saved per document and restored when that document is reopened; use the trash
+button in the tutor panel to delete that document's conversation. Documents can
 be deleted from the library.
 
 Before enabling uploads, create and connect a **private** Vercel Blob store for
