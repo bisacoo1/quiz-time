@@ -12,8 +12,9 @@ import { RegisterServiceWorker } from "@/components/register-sw";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "QuizTime – Flashcard Quiz Maker",
-  description: "Scan your PDFs or screenshots and turn them into fun flashcard quizzes!",
+  title: "QuizTime – Study smarter, one session at a time",
+  description:
+    "Turn your notes into flashcards, practice with quizzes, and remember more with spaced review and AI study tools.",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,

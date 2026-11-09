@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback, useMemo, useId, type ReactNod
 import { useSession, signIn, signOut } from "next-auth/react";
 import Link from "next/link";
 import { LoginPage } from "@/components/login-page";
+import { LandingPage } from "@/components/landing-page";
 import { AiTutor } from "@/components/ai-tutor";
 import { OwnerPresenceBar, PresencePanel } from "@/components/owner-presence";
 import { usePresenceRoster } from "@/lib/use-presence";
@@ -8581,7 +8582,10 @@ export default function App() {
   // straight into the app; the login page itself offers "Continue offline"
   // for the case where the user has to ask for it.
   if (!identity.ready || !signedIn) {
-    return <LoginPage loading={!identity.ready || status === "loading"} />;
+    if (!identity.ready || status === "loading") {
+      return <LoginPage loading />;
+    }
+    return <LandingPage />;
   }
 
   const renderContent = () => {
