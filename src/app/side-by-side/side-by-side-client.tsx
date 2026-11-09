@@ -8,10 +8,14 @@ import {
   ArrowLeft,
   ArrowRight,
   BookOpen,
+  Check,
   FileText,
+  Highlighter,
   LoaderCircle,
   MessageCircle,
+  NotebookPen,
   Search,
+  Save,
   Send,
   Sparkles,
   Trash2,
@@ -25,6 +29,9 @@ import {
   sanitizeDocumentName,
   SIDE_BY_SIDE_MAX_FILE_BYTES,
   SIDE_BY_SIDE_STORAGE_LIMIT_BYTES,
+  SIDE_BY_SIDE_HIGHLIGHT_NOTE_MAX_LENGTH,
+  isValidSideBySideHighlightRects,
+  type SideBySideHighlightRect,
 } from "@/lib/side-by-side";
 
 interface SavedDocument {
@@ -41,6 +48,35 @@ interface SavedDocument {
 interface TutorMessage {
   role: "user" | "assistant";
   content: string;
+}
+
+interface SavedHighlight {
+  id: number;
+  quote: string;
+  note: string;
+  rects: SideBySideHighlightRect[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+function isSavedHighlight(value: unknown): value is SavedHighlight {
+  return (
+    !!value &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    "id" in value &&
+    Number.isSafeInteger(value.id) &&
+    "quote" in value &&
+    typeof value.quote === "string" &&
+    "note" in value &&
+    typeof value.note === "string" &&
+    "rects" in value &&
+    isValidSideBySideHighlightRects(value.rects) &&
+    "createdAt" in value &&
+    typeof value.createdAt === "string" &&
+    "updatedAt" in value &&
+    typeof value.updatedAt === "string"
+  );
 }
 
 interface DocumentProgress {
@@ -76,6 +112,47 @@ function errorFromResponse(body: unknown, fallback: string): string {
   return fallback;
 }
 
+function getSelectionHighlightRects(
+  range: Range,
+  reader: HTMLElement | null
+): SideBySideHighlightRect[] {
+  if (!reader) return [];
+  const pages = Array.from(reader.querySelectorAll<HTMLElement>("[data-sbs-page]"));
+  const rects: SideBySideHighlightRect[] = [];
+
+  for (const selectionRect of Array.from(range.getClientRects())) {
+    const centerX = selectionRect.left + selectionRect.width / 2;
+    const centerY = selectionRect.top + selectionRect.height / 2;
+    const page = pages.find((candidate) => {
+      const bounds = candidate.getBoundingClientRect();
+      return (
+        centerX >= bounds.left &&
+        centerX <= bounds.right &&
+        centerY >= bounds.top &&
+        centerY <= bounds.bottom &&
+        bounds.width > 0 &&
+        bounds.height > 0
+      );
+    });
+    if (!page) continue;
+
+    const bounds = page.getBoundingClientRect();
+    const left = Math.max(selectionRect.left, bounds.left);
+    const top = Math.max(selectionRect.top, bounds.top);
+    const right = Math.min(selectionRect.right, bounds.right);
+    const bottom = Math.min(selectionRect.bottom, bounds.bottom);
+    if (right <= left || bottom <= top) continue;
+    rects.push({
+      pageNumber: Number(page.dataset.sbsPage),
+      x: (left - bounds.left) / bounds.width,
+      y: (top - bounds.top) / bounds.height,
+      width: (right - left) / bounds.width,
+      height: (bottom - top) / bounds.height,
+    });
+  }
+  return rects.filter((rect) => Number.isSafeInteger(rect.pageNumber) && rect.pageNumber > 0);
+}
+
 export default function SideBySideClient() {
   const { data: session, status } = useSession();
   const userId = session?.user?.id;
@@ -103,7 +180,18 @@ export default function SideBySideClient() {
   const [selectedText, setSelectedText] = useState("");
   const [selectionContext, setSelectionContext] = useState("");
   const [selectionAction, setSelectionAction] = useState<{ left: number; top: number } | null>(null);
+  const [selectionRects, setSelectionRects] = useState<SideBySideHighlightRect[]>([]);
   const [selectionExplained, setSelectionExplained] = useState(false);
+  const [savedHighlights, setSavedHighlights] = useState<SavedHighlight[]>([]);
+  const [highlightsDocumentId, setHighlightsDocumentId] = useState<number | null>(null);
+  const [activePanel, setActivePanel] = useState<"tutor" | "highlights">("tutor");
+  const [highlightsError, setHighlightsError] = useState("");
+  const [creatingHighlight, setCreatingHighlight] = useState(false);
+  const [savingNoteId, setSavingNoteId] = useState<number | null>(null);
+  const [savedNoteId, setSavedNoteId] = useState<number | null>(null);
+  const [deletingHighlightId, setDeletingHighlightId] = useState<number | null>(null);
+  const [pendingHighlightPage, setPendingHighlightPage] = useState<number | null>(null);
+  const pendingHighlightPageRef = useRef<number | null>(null);
   const [messages, setMessages] = useState<TutorMessage[]>([]);
   const [conversationDocumentId, setConversationDocumentId] = useState<number | null>(null);
   const [question, setQuestion] = useState("");
@@ -118,10 +206,14 @@ export default function SideBySideClient() {
   const activeDocumentId = activeDocument?.id;
   const conversationLoading =
     !!activeDocumentId && activeDocumentId !== conversationDocumentId;
+  const highlightsLoading =
+    !!activeDocumentId && activeDocumentId !== highlightsDocumentId;
   const activeDocumentMimeType = activeDocument?.mimeType;
   const activeDocumentLastScrollTop = activeDocument?.lastScrollTop ?? 0;
   const docxText =
     loadedDocx && loadedDocx.documentId === activeDocumentId ? loadedDocx.text : "";
+  const currentHighlights =
+    activeDocumentId === highlightsDocumentId ? savedHighlights : [];
   const documentLoading =
     activeDocumentMimeType === DOCX_MIME &&
     loadedDocx?.documentId !== activeDocumentId &&
@@ -250,6 +342,47 @@ export default function SideBySideClient() {
     };
   }, [activeDocumentId]);
 
+  useEffect(() => {
+    if (!activeDocumentId) return;
+
+    let active = true;
+    fetch(`/api/side-by-side/documents/${activeDocumentId}/highlights`, { cache: "no-store" })
+      .then(async (response) => {
+        const body: unknown = await response.json();
+        if (!response.ok) {
+          throw new Error(errorFromResponse(body, "Couldn't load saved highlights."));
+        }
+        if (
+          !body ||
+          typeof body !== "object" ||
+          !("highlights" in body) ||
+          !Array.isArray(body.highlights) ||
+          !body.highlights.every(isSavedHighlight)
+        ) {
+          throw new Error("The saved highlights response was invalid.");
+        }
+        if (active) {
+          setSavedHighlights(body.highlights);
+          setHighlightsError("");
+        }
+      })
+      .catch((cause: unknown) => {
+        if (active) {
+          setSavedHighlights([]);
+          setHighlightsError(
+            cause instanceof Error ? cause.message : "Couldn't load saved highlights."
+          );
+        }
+      })
+      .finally(() => {
+        if (active) setHighlightsDocumentId(activeDocumentId);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [activeDocumentId]);
+
   useEffect(
     () => () => {
       if (progressTimerRef.current) clearTimeout(progressTimerRef.current);
@@ -347,7 +480,11 @@ export default function SideBySideClient() {
       setSelectedText("");
       setSelectionContext("");
       setSelectionAction(null);
+      setSelectionRects([]);
+      setSelectionExplained(false);
+      setActivePanel("tutor");
       setTutorError("");
+      setHighlightsError("");
       await loadDocuments().catch((cause: unknown) => {
         setError(
           cause instanceof Error
@@ -396,21 +533,24 @@ export default function SideBySideClient() {
       const text = selection?.toString().trim() ?? "";
       if (!text || !selection || selection.rangeCount === 0) {
         setSelectionAction(null);
+        setSelectionRects([]);
         return;
       }
       if (text.length > 5000) {
         setSelectedText("");
         setSelectionContext("");
         setSelectionAction(null);
+        setSelectionRects([]);
         setTutorError("Select a shorter passage (up to 5,000 characters) to explain it.");
         return;
       }
 
       const range = selection.getRangeAt(0);
       const rect = range.getBoundingClientRect();
-      const left = Math.min(Math.max(rect.left + rect.width / 2 - 88, 12), window.innerWidth - 188);
+      const left = Math.min(Math.max(rect.left + rect.width / 2 - 130, 12), window.innerWidth - 270);
       if (text !== selectedText || !selectionAction) setSelectionExplained(false);
       setSelectedText(text);
+      setSelectionRects(getSelectionHighlightRects(range, readerContentRef.current));
       setTutorError("");
 
       const readerText = readerContentRef.current?.innerText ?? "";
@@ -423,6 +563,145 @@ export default function SideBySideClient() {
       setSelectionAction({ left, top: Math.max(8, rect.top - 48) });
     });
   };
+
+  const createHighlight = async () => {
+    if (
+      !activeDocument ||
+      !selectedText ||
+      !selectionRects.length ||
+      creatingHighlight ||
+      highlightsLoading
+    ) return;
+    setCreatingHighlight(true);
+    setHighlightsError("");
+    try {
+      const response = await fetch(
+        `/api/side-by-side/documents/${activeDocument.id}/highlights`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ quote: selectedText, rects: selectionRects }),
+        }
+      );
+      const body: unknown = await response.json();
+      if (!response.ok) {
+        throw new Error(errorFromResponse(body, "Couldn't save this highlight."));
+      }
+      const savedResponse =
+        body && typeof body === "object" && "highlight" in body ? body.highlight : null;
+      if (
+        !isSavedHighlight(savedResponse)
+      ) {
+        throw new Error("The saved highlight response was invalid.");
+      }
+      const saved = savedResponse;
+      setSavedHighlights((current) => [...current, saved]);
+      setActivePanel("highlights");
+      setSelectedText("");
+      setSelectionContext("");
+      setSelectionRects([]);
+      setSelectionAction(null);
+      window.getSelection()?.removeAllRanges();
+    } catch (cause) {
+      setHighlightsError(cause instanceof Error ? cause.message : "Couldn't save this highlight.");
+      setActivePanel("highlights");
+    } finally {
+      setCreatingHighlight(false);
+    }
+  };
+
+  const saveHighlightNote = async (highlight: SavedHighlight) => {
+    if (!activeDocument || savingNoteId !== null) return;
+    setSavingNoteId(highlight.id);
+    setHighlightsError("");
+    try {
+      const response = await fetch(
+        `/api/side-by-side/documents/${activeDocument.id}/highlights/${highlight.id}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ note: highlight.note.slice(0, SIDE_BY_SIDE_HIGHLIGHT_NOTE_MAX_LENGTH) }),
+        }
+      );
+      const body: unknown = await response.json();
+      if (!response.ok) throw new Error(errorFromResponse(body, "Couldn't save this note."));
+      const savedResponse =
+        body && typeof body === "object" && "highlight" in body ? body.highlight : null;
+      if (!isSavedHighlight(savedResponse)) {
+        throw new Error("The saved note response was invalid.");
+      }
+      const saved = savedResponse;
+      setSavedHighlights((current) =>
+        current.map((item) => item.id === highlight.id ? saved : item)
+      );
+      setSavedNoteId(highlight.id);
+    } catch (cause) {
+      setHighlightsError(cause instanceof Error ? cause.message : "Couldn't save this note.");
+    } finally {
+      setSavingNoteId(null);
+    }
+  };
+
+  const deleteHighlight = async (highlight: SavedHighlight) => {
+    if (
+      !activeDocument ||
+      deletingHighlightId !== null ||
+      !window.confirm("Remove this saved highlight and its note?")
+    ) {
+      return;
+    }
+    setDeletingHighlightId(highlight.id);
+    setHighlightsError("");
+    try {
+      const response = await fetch(
+        `/api/side-by-side/documents/${activeDocument.id}/highlights/${highlight.id}`,
+        { method: "DELETE" }
+      );
+      const body: unknown = await response.json();
+      if (!response.ok) throw new Error(errorFromResponse(body, "Couldn't remove this highlight."));
+      setSavedHighlights((current) => current.filter((item) => item.id !== highlight.id));
+    } catch (cause) {
+      setHighlightsError(cause instanceof Error ? cause.message : "Couldn't remove this highlight.");
+    } finally {
+      setDeletingHighlightId(null);
+    }
+  };
+
+  const navigateToHighlight = (highlight: SavedHighlight) => {
+    const pageNumber = highlight.rects[0]?.pageNumber;
+    if (!pageNumber) return;
+    if (activeDocument?.mimeType === "application/pdf") {
+      pendingHighlightPageRef.current = pageNumber;
+      setPendingHighlightPage(pageNumber);
+      setPageNumber(pageNumber);
+      saveProgress(activeDocument.id, { lastPage: pageNumber });
+    } else {
+      const reader = readerContentRef.current;
+      const page = reader?.querySelector<HTMLElement>(`[data-sbs-page="${pageNumber}"]`);
+      const scrollContainer = page?.closest<HTMLElement>(".sbs-docx-scroll");
+      if (page && scrollContainer) {
+        const offset = page.getBoundingClientRect().top - scrollContainer.getBoundingClientRect().top;
+        scrollContainer.scrollTo({ top: scrollContainer.scrollTop + offset - 24, behavior: "smooth" });
+      }
+    }
+  };
+
+  useEffect(() => {
+    const targetPage = pendingHighlightPageRef.current;
+    if (!targetPage || activeDocumentMimeType !== "application/pdf" || pageNumber !== targetPage) return;
+    window.requestAnimationFrame(() => {
+      const page = readerContentRef.current?.querySelector<HTMLElement>(
+        `[data-sbs-page="${targetPage}"]`
+      );
+      if (page && readerContentRef.current) {
+        const reader = readerContentRef.current;
+        const offset = page.getBoundingClientRect().top - reader.getBoundingClientRect().top;
+        reader.scrollTo({ top: reader.scrollTop + offset - 24, behavior: "smooth" });
+      }
+      pendingHighlightPageRef.current = null;
+      setPendingHighlightPage(null);
+    });
+  }, [activeDocumentId, activeDocumentMimeType, pageNumber, pendingHighlightPage]);
 
   useEffect(() => {
     if (activeDocumentMimeType === "application/pdf" && readerContentRef.current) {
@@ -685,10 +964,15 @@ export default function SideBySideClient() {
                       setMessages([]);
                       setConversationDocumentId(null);
                       setSelectedText("");
+                      setSelectionContext("");
                       setSelectionAction(null);
+                      setSelectionRects([]);
+                      setSelectionExplained(false);
+                      setActivePanel("tutor");
                       setSaveMessage("");
                       setReaderError("");
                       setTutorError("");
+                      setHighlightsError("");
                     }}
                   >
                     <span className="sbs-file-icon"><FileText size={20} aria-hidden /></span>
@@ -729,6 +1013,10 @@ export default function SideBySideClient() {
                 setActiveDocument(null);
                 setConversationDocumentId(null);
                 setSelectionAction(null);
+                setSelectedText("");
+                setSelectionContext("");
+                setSelectionRects([]);
+                setSelectionExplained(false);
                 void loadDocuments().catch((cause: unknown) => {
                   setError(cause instanceof Error ? cause.message : "Couldn't refresh your documents.");
                 });
@@ -824,6 +1112,7 @@ export default function SideBySideClient() {
                     searchQuery={searchQuery}
                     activeSearchMatch={searchMatchIndex}
                     searchMatches={pdfSearchMatches}
+                    highlights={currentHighlights}
                     onLoad={onPdfLoad}
                     onError={onPdfError}
                     onSearchResults={onPdfSearchResults}
@@ -841,19 +1130,36 @@ export default function SideBySideClient() {
                     initialScrollTop={activeDocumentLastScrollTop}
                     onScroll={handleDocxScroll}
                     onSearchMatchCount={onDocxSearchMatchCount}
+                    highlights={currentHighlights}
                   />
                 )}
               </div>
               {selectionAction && selectedText && !selectionExplained && !tutorBusy && (
-                <button
-                  type="button"
-                  className="sbs-explain-selection"
+                <div
+                  className="sbs-selection-actions"
                   style={{ left: selectionAction.left, top: selectionAction.top }}
-                  onMouseDown={(event) => event.preventDefault()}
-                  onClick={() => void askTutor("Explain this passage in simple terms.")}
                 >
-                  <Sparkles size={15} aria-hidden /> Explain with AI
-                </button>
+                  <button
+                    type="button"
+                    className="sbs-highlight-selection"
+                    disabled={creatingHighlight || !selectionRects.length}
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => void createHighlight()}
+                  >
+                    {creatingHighlight
+                      ? <LoaderCircle className="sbs-spin" size={15} />
+                      : <Highlighter size={15} aria-hidden />}
+                    Highlight
+                  </button>
+                  <button
+                    type="button"
+                    className="sbs-explain-selection"
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => void askTutor("Explain this passage in simple terms.")}
+                  >
+                    <Sparkles size={15} aria-hidden /> Explain with AI
+                  </button>
+                </div>
               )}
             </section>
 
@@ -864,7 +1170,7 @@ export default function SideBySideClient() {
                   <h2>AI Study Partner</h2>
                   <p>Grounded in your selected passage</p>
                 </div>
-                {messages.length > 0 && (
+                {activePanel === "tutor" && messages.length > 0 && (
                   <button
                     type="button"
                     className="sbs-clear-chat"
@@ -878,7 +1184,7 @@ export default function SideBySideClient() {
                       : <Trash2 size={16} aria-hidden />}
                   </button>
                 )}
-                {selectedText && (
+                {activePanel === "tutor" && selectedText && (
                   <button
                     type="button"
                     className="sbs-clear-selection"
@@ -894,58 +1200,153 @@ export default function SideBySideClient() {
                 )}
               </div>
 
-              {selectedText ? (
-                <div className="sbs-selected-passage">
-                  <p>SELECTED PASSAGE</p>
-                  <blockquote>{selectedText}</blockquote>
-                </div>
-              ) : (
-                <div className="sbs-ai-welcome">
-                  <span><MessageCircle size={22} aria-hidden /></span>
-                  <strong>Start with a highlight</strong>
-                  <p>Select any text in the document, then choose “Explain with AI”.</p>
-                </div>
-              )}
-
-              {tutorError && <p className="sbs-tutor-error" role="alert">{tutorError}</p>}
-
-              <div className="sbs-chat" aria-live="polite">
-                {conversationLoading && (
-                  <div className="sbs-message sbs-message-assistant sbs-thinking">
-                    <LoaderCircle className="sbs-spin" size={16} /> Loading saved conversation…
-                  </div>
-                )}
-                {!conversationLoading && messages.map((message, index) => (
-                  <div className={`sbs-message sbs-message-${message.role}`} key={`${index}-${message.role}`}>
-                    <span className="sbs-message-speaker">
-                      {message.role === "user" ? "You" : "Tutor"}
-                    </span>
-                    <p>{message.content}</p>
-                  </div>
-                ))}
-                {tutorBusy && (
-                  <div className="sbs-message sbs-message-assistant sbs-thinking">
-                    <LoaderCircle className="sbs-spin" size={16} /> Thinking through the passage…
-                  </div>
-                )}
+              <div className="sbs-panel-tabs" role="tablist" aria-label="Study panel">
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={activePanel === "tutor"}
+                  onClick={() => setActivePanel("tutor")}
+                >
+                  <MessageCircle size={15} aria-hidden /> AI Tutor
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={activePanel === "highlights"}
+                  onClick={() => setActivePanel("highlights")}
+                >
+                  <Highlighter size={15} aria-hidden /> Highlights
+                  <span>{currentHighlights.length}</span>
+                </button>
               </div>
 
-              <form className="sbs-question-form" onSubmit={submitQuestion}>
-                <label className="sbs-sr-only" htmlFor="sbs-question">Ask a follow-up question</label>
-                <textarea
-                  id="sbs-question"
-                  value={question}
-                  maxLength={500}
-                  disabled={!selectedText || tutorBusy || conversationLoading}
-                  onChange={(event) => setQuestion(event.target.value)}
-                  placeholder={selectedText ? "Ask a follow-up…" : "Highlight a passage to start"}
-                  rows={2}
-                />
-                <button type="submit" disabled={!selectedText || !question.trim() || tutorBusy || conversationLoading} aria-label="Send question">
-                  {tutorBusy ? <LoaderCircle className="sbs-spin" size={17} /> : <Send size={17} aria-hidden />}
-                </button>
-              </form>
-              <p className="sbs-ai-footnote">AI can make mistakes. Check important details against your material.</p>
+              {activePanel === "tutor" ? (
+                <>
+                  {selectedText ? (
+                    <div className="sbs-selected-passage">
+                      <p>SELECTED PASSAGE</p>
+                      <blockquote>{selectedText}</blockquote>
+                    </div>
+                  ) : (
+                    <div className="sbs-ai-welcome">
+                      <span><MessageCircle size={22} aria-hidden /></span>
+                      <strong>Start with a highlight</strong>
+                      <p>Select any text in the document, then choose “Explain with AI”.</p>
+                    </div>
+                  )}
+
+                  {tutorError && <p className="sbs-tutor-error" role="alert">{tutorError}</p>}
+
+                  <div className="sbs-chat" aria-live="polite">
+                    {conversationLoading && (
+                      <div className="sbs-message sbs-message-assistant sbs-thinking">
+                        <LoaderCircle className="sbs-spin" size={16} /> Loading saved conversation…
+                      </div>
+                    )}
+                    {!conversationLoading && messages.map((message, index) => (
+                      <div className={`sbs-message sbs-message-${message.role}`} key={`${index}-${message.role}`}>
+                        <span className="sbs-message-speaker">
+                          {message.role === "user" ? "You" : "Tutor"}
+                        </span>
+                        <p>{message.content}</p>
+                      </div>
+                    ))}
+                    {tutorBusy && (
+                      <div className="sbs-message sbs-message-assistant sbs-thinking">
+                        <LoaderCircle className="sbs-spin" size={16} /> Thinking through the passage…
+                      </div>
+                    )}
+                  </div>
+
+                  <form className="sbs-question-form" onSubmit={submitQuestion}>
+                    <label className="sbs-sr-only" htmlFor="sbs-question">Ask a follow-up question</label>
+                    <textarea
+                      id="sbs-question"
+                      value={question}
+                      maxLength={500}
+                      disabled={!selectedText || tutorBusy || conversationLoading}
+                      onChange={(event) => setQuestion(event.target.value)}
+                      placeholder={selectedText ? "Ask a follow-up…" : "Highlight a passage to start"}
+                      rows={2}
+                    />
+                    <button type="submit" disabled={!selectedText || !question.trim() || tutorBusy || conversationLoading} aria-label="Send question">
+                      {tutorBusy ? <LoaderCircle className="sbs-spin" size={17} /> : <Send size={17} aria-hidden />}
+                    </button>
+                  </form>
+                  <p className="sbs-ai-footnote">AI can make mistakes. Check important details against your material.</p>
+                </>
+              ) : (
+                <div className="sbs-highlights-panel">
+                  {highlightsError && <p className="sbs-tutor-error" role="alert">{highlightsError}</p>}
+                  {highlightsLoading ? (
+                    <div className="sbs-highlights-empty"><LoaderCircle className="sbs-spin" size={18} /> Loading saved highlights…</div>
+                  ) : currentHighlights.length === 0 ? (
+                    <div className="sbs-highlights-empty">
+                      <NotebookPen size={24} aria-hidden />
+                      <strong>No saved highlights yet</strong>
+                      <p>Select a passage in the document and choose Highlight to save it here.</p>
+                    </div>
+                  ) : (
+                    currentHighlights.map((highlight) => (
+                      <article className="sbs-highlight-card" key={highlight.id}>
+                        <button
+                          type="button"
+                          className="sbs-highlight-quote"
+                          onClick={() => navigateToHighlight(highlight)}
+                          aria-label={`Jump to page ${highlight.rects[0]?.pageNumber}: ${highlight.quote}`}
+                        >
+                          <span>Page {highlight.rects[0]?.pageNumber ?? "—"}</span>
+                          <q>{highlight.quote}</q>
+                        </button>
+                        <label>
+                          <span className="sbs-sr-only">Note for this highlight</span>
+                          <textarea
+                            maxLength={SIDE_BY_SIDE_HIGHLIGHT_NOTE_MAX_LENGTH}
+                            rows={2}
+                            placeholder="Add a note (optional)"
+                            value={highlight.note}
+                            onChange={(event) => {
+                              setSavedNoteId((current) => current === highlight.id ? null : current);
+                              setSavedHighlights((current) =>
+                                current.map((item) =>
+                                  item.id === highlight.id
+                                    ? { ...item, note: event.target.value }
+                                    : item
+                                )
+                              );
+                            }}
+                          />
+                        </label>
+                        <div className="sbs-highlight-actions">
+                          <button
+                            type="button"
+                            onClick={() => void saveHighlightNote(highlight)}
+                            disabled={savingNoteId !== null || highlight.note.length > SIDE_BY_SIDE_HIGHLIGHT_NOTE_MAX_LENGTH}
+                          >
+                            {savingNoteId === highlight.id
+                              ? <LoaderCircle className="sbs-spin" size={14} />
+                              : savedNoteId === highlight.id
+                                ? <Check size={14} aria-hidden />
+                                : <Save size={14} aria-hidden />}
+                            {savedNoteId === highlight.id ? "Saved" : "Save note"}
+                          </button>
+                          <button
+                            type="button"
+                            aria-label="Delete saved highlight"
+                            title="Delete saved highlight"
+                            onClick={() => void deleteHighlight(highlight)}
+                            disabled={deletingHighlightId !== null}
+                          >
+                            {deletingHighlightId === highlight.id
+                              ? <LoaderCircle className="sbs-spin" size={14} />
+                              : <Trash2 size={14} aria-hidden />}
+                          </button>
+                        </div>
+                      </article>
+                    ))
+                  )}
+                </div>
+              )}
             </aside>
           </div>
         </>

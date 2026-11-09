@@ -2,6 +2,7 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { paginateMeasuredDocxParagraphs } from "@/lib/side-by-side";
+import type { SideBySideHighlightRect } from "@/lib/side-by-side";
 
 interface DocxDocumentViewerProps {
   documentId: number;
@@ -12,6 +13,7 @@ interface DocxDocumentViewerProps {
   initialScrollTop: number;
   onScroll: (scrollTop: number) => void;
   onSearchMatchCount: (count: number) => void;
+  highlights: Array<{ id: number; rects: SideBySideHighlightRect[] }>;
 }
 
 interface TextMatch {
@@ -62,6 +64,7 @@ export function DocxDocumentViewer({
   initialScrollTop,
   onScroll,
   onSearchMatchCount,
+  highlights,
 }: DocxDocumentViewerProps) {
   const paragraphs = useMemo(() => getParagraphs(text), [text]);
   const [pages, setPages] = useState<string[][]>([]);
@@ -198,7 +201,28 @@ export function DocxDocumentViewer({
       aria-label="Word document text"
     >
       {pages.map((page, index) => (
-        <article className="sbs-docx-page" key={`${documentId}-${index}`}>
+        <article
+          className="sbs-docx-page"
+          data-sbs-page={index + 1}
+          key={`${documentId}-${index}`}
+        >
+          {highlights.flatMap((highlight) =>
+            highlight.rects
+              .filter((rect) => rect.pageNumber === index + 1)
+              .map((rect, rectIndex) => (
+                <span
+                  aria-hidden
+                  className="sbs-saved-highlight"
+                  key={`${highlight.id}-${rectIndex}`}
+                  style={{
+                    left: `${rect.x * 100}%`,
+                    top: `${rect.y * 100}%`,
+                    width: `${rect.width * 100}%`,
+                    height: `${rect.height * 100}%`,
+                  }}
+                />
+              ))
+          )}
           {index === 0 && <h2>{originalName}</h2>}
           <div className="sbs-docx-page-body">
             {page.map((paragraph, paragraphIndex) => (

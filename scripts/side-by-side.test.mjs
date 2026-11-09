@@ -5,10 +5,13 @@ import {
   findPdfTextMatches,
   getSideBySideMimeType,
   isSideBySideMimeType,
+  isValidSideBySideHighlightRects,
   paginateMeasuredDocxParagraphs,
   removeTutorMarkdown,
   sanitizeDocumentName,
   SIDE_BY_SIDE_MAX_FILE_BYTES,
+  SIDE_BY_SIDE_HIGHLIGHT_MAX_LENGTH,
+  SIDE_BY_SIDE_HIGHLIGHT_NOTE_MAX_LENGTH,
   SIDE_BY_SIDE_STORAGE_LIMIT_BYTES,
 } from "../src/lib/side-by-side.ts";
 
@@ -69,6 +72,27 @@ test("storage reservations reject invalid byte counts", () => {
   assert.equal(hasSideBySideStorageCapacity(-1, 0, 1), false);
   assert.equal(hasSideBySideStorageCapacity(0, 0, 0), false);
   assert.equal(hasSideBySideStorageCapacity(0, 0, 1.5), false);
+});
+
+test("saved highlight geometry accepts bounded page-relative rectangles", () => {
+  assert.equal(SIDE_BY_SIDE_HIGHLIGHT_MAX_LENGTH, 5000);
+  assert.equal(SIDE_BY_SIDE_HIGHLIGHT_NOTE_MAX_LENGTH, 2000);
+  assert.equal(
+    isValidSideBySideHighlightRects([
+      { pageNumber: 1, x: 0.1, y: 0.2, width: 0.4, height: 0.03 },
+      { pageNumber: 2, x: 0, y: 0.95, width: 1, height: 0.05 },
+    ]),
+    true
+  );
+  assert.equal(isValidSideBySideHighlightRects([]), false);
+  assert.equal(
+    isValidSideBySideHighlightRects([{ pageNumber: 0, x: 0, y: 0, width: 0.1, height: 0.1 }]),
+    false
+  );
+  assert.equal(
+    isValidSideBySideHighlightRects([{ pageNumber: 1, x: 0.9, y: 0, width: 0.2, height: 0.1 }]),
+    false
+  );
 });
 
 test("tutor answers display cleanly without Markdown markers", () => {

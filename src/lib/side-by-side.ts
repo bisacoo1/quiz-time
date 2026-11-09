@@ -1,5 +1,42 @@
 export const SIDE_BY_SIDE_MAX_FILE_BYTES = 50 * 1024 * 1024;
 export const SIDE_BY_SIDE_STORAGE_LIMIT_BYTES = 500 * 1024 * 1024;
+export const SIDE_BY_SIDE_HIGHLIGHT_MAX_LENGTH = 5000;
+export const SIDE_BY_SIDE_HIGHLIGHT_NOTE_MAX_LENGTH = 2000;
+
+export interface SideBySideHighlightRect {
+  pageNumber: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export function isValidSideBySideHighlightRects(value: unknown): value is SideBySideHighlightRect[] {
+  if (!Array.isArray(value) || value.length < 1 || value.length > 500) return false;
+  return value.every((rect) => {
+    if (!rect || typeof rect !== "object" || Array.isArray(rect)) return false;
+    const candidate = rect as Record<string, unknown>;
+    return (
+      Number.isSafeInteger(candidate.pageNumber) &&
+      (candidate.pageNumber as number) > 0 &&
+      typeof candidate.x === "number" &&
+      Number.isFinite(candidate.x) &&
+      candidate.x >= 0 &&
+      typeof candidate.y === "number" &&
+      Number.isFinite(candidate.y) &&
+      candidate.y >= 0 &&
+      typeof candidate.width === "number" &&
+      Number.isFinite(candidate.width) &&
+      candidate.width > 0 &&
+      typeof candidate.height === "number" &&
+      Number.isFinite(candidate.height) &&
+      candidate.height > 0 &&
+      candidate.x + candidate.width <= 1.01 &&
+      candidate.y + candidate.height <= 1.01
+    );
+  });
+}
+
 export function hasSideBySideStorageCapacity(
   usedBytes: number,
   reservedBytes: number,

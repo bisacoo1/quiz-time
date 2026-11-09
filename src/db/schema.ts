@@ -6,6 +6,7 @@ import {
   integer,
   boolean,
   real,
+  jsonb,
   index,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
@@ -114,6 +115,36 @@ export const documentTutorMessages = pgTable(
   },
   (table) => [
     index("document_tutor_messages_document_created_idx").on(
+      table.documentId,
+      table.createdAt,
+      table.id
+    ),
+  ]
+);
+
+export interface DocumentHighlightRect {
+  pageNumber: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export const documentHighlights = pgTable(
+  "document_highlights",
+  {
+    id: serial("id").primaryKey(),
+    documentId: integer("document_id")
+      .notNull()
+      .references(() => savedDocuments.id, { onDelete: "cascade" }),
+    quote: text("quote").notNull(),
+    note: text("note").notNull().default(""),
+    rects: jsonb("rects").$type<DocumentHighlightRect[]>().notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("document_highlights_document_created_idx").on(
       table.documentId,
       table.createdAt,
       table.id

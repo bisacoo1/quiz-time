@@ -200,10 +200,12 @@ straight into Study mode).
 Open **Read with AI · Side by Side** from the home screen to upload a PDF or
 DOCX up to 50 MB per file, with 500 MB of total storage per account. Documents
 are stored in a private Vercel Blob store and tied to the signed-in account.
-Select text in the reader and choose **Explain with AI** to ask the tutor about
-it. Follow-up questions stay grounded in the selected passage. PDF page
-position and DOCX scroll position are saved so reading can resume later.
-Use **Find in document** to locate and navigate highlighted text in either
+Select text in the reader to **Highlight** it in yellow or choose **Explain
+with AI** to ask the tutor about it. Saved highlights stay attached to the
+document; add a note, jump back to the passage, or remove a highlight from the
+Highlights panel. Follow-up questions stay grounded in the selected passage.
+PDF page position and DOCX scroll position are saved so reading can resume
+later. Use **Find in document** to search and navigate matching text in either
 format.
 DOCX pages are split according to their rendered text height while retaining
 paragraphs, and page numbers are shown in the reader. Tutor conversations are
@@ -217,10 +219,10 @@ Vercel project environment. Never make this token public. PDF pages keep their
 layout; DOCX files are displayed as readable text with approximate pagination
 because original Word styling and embedded images are not preserved.
 
-The tutor conversation history requires the migration in
-`drizzle/0011_clammy_zeigeist.sql`. Apply it to the production database before
-deploying this version; for Supabase, run the migration SQL once in its SQL
-Editor.
+Tutor conversation history requires `drizzle/0011_clammy_zeigeist.sql`, and
+saved highlights and notes require `drizzle/0012_cold_doctor_faustus.sql`.
+Apply pending migrations to the production database before deploying this
+version; for Supabase, run each new migration SQL file once in its SQL Editor.
 
 ## Organizing decks
 

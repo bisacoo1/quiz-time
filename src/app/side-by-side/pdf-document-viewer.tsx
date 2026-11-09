@@ -8,6 +8,7 @@ import type {
   TextLayer,
 } from "pdfjs-dist";
 import { findPdfTextMatches } from "@/lib/side-by-side";
+import type { SideBySideHighlightRect } from "@/lib/side-by-side";
 
 export interface PdfSearchMatch {
   pageNumber: number;
@@ -20,6 +21,7 @@ interface PdfDocumentViewerProps {
   searchQuery: string;
   activeSearchMatch: number;
   searchMatches: PdfSearchMatch[];
+  highlights: Array<{ id: number; rects: SideBySideHighlightRect[] }>;
   onLoad: (pageCount: number) => void;
   onError: (message: string) => void;
   onSearchResults: (matches: PdfSearchMatch[]) => void;
@@ -33,6 +35,7 @@ export function PdfDocumentViewer({
   searchQuery,
   activeSearchMatch,
   searchMatches,
+  highlights,
   onLoad,
   onError,
   onSearchResults,
@@ -228,8 +231,25 @@ export function PdfDocumentViewer({
     <div className="sbs-pdf-stage" ref={containerRef}>
       {loading && <p className="sbs-reader-status">Opening PDF…</p>}
       <div className="sbs-pdf-sheet" style={pageWidth ? { width: pageWidth } : undefined}>
-        <div className="sbs-pdf-page" aria-label={`PDF page ${pageNumber}`}>
+        <div className="sbs-pdf-page" data-sbs-page={pageNumber} aria-label={`PDF page ${pageNumber}`}>
           <canvas ref={canvasRef} className="sbs-pdf-canvas" />
+          {highlights.flatMap((highlight) =>
+            highlight.rects
+              .filter((rect) => rect.pageNumber === pageNumber)
+              .map((rect, index) => (
+                <span
+                  aria-hidden
+                  className="sbs-saved-highlight"
+                  key={`${highlight.id}-${index}`}
+                  style={{
+                    left: `${rect.x * 100}%`,
+                    top: `${rect.y * 100}%`,
+                    width: `${rect.width * 100}%`,
+                    height: `${rect.height * 100}%`,
+                  }}
+                />
+              ))
+          )}
           <div ref={textLayerRef} className="sbs-pdf-text-layer" />
         </div>
         <footer className="sbs-pdf-page-number">Page {pageNumber}</footer>
