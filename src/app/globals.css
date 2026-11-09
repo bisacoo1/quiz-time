@@ -3257,6 +3257,18 @@ body.maintenance-active {
   .sbs-page-controls { margin-left: auto; }
   .sbs-library-heading { align-items: flex-start; flex-direction: column; }
   .sbs-library-heading > .sbs-primary-button { width: 100%; }
+  .sbs-explain-selection {
+    position: fixed;
+    top: auto !important;
+    right: 16px;
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
+    left: 16px !important;
+    justify-content: center;
+    min-height: 48px;
+    border-radius: 14px;
+    font-size: 14px;
+    box-shadow: 0 8px 26px rgba(25, 22, 44, .3);
+  }
 }
 
 @media (max-width: 430px) {
