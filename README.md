@@ -203,12 +203,21 @@ are stored in a private Vercel Blob store and tied to the signed-in account.
 Select text in the reader and choose **Explain with AI** to ask the tutor about
 it. Follow-up questions stay grounded in the selected passage. PDF page
 position and DOCX scroll position are saved so reading can resume later.
-Documents can be deleted from the library.
+DOCX pages are split according to their rendered text height while retaining
+paragraphs, and page numbers are shown in the reader. Tutor conversations are
+saved per document and restored when that document is reopened. Documents can
+be deleted from the library.
 
 Before enabling uploads, create and connect a **private** Vercel Blob store for
 the project, then add its `BLOB_READ_WRITE_TOKEN` to local development and the
 Vercel project environment. Never make this token public. PDF pages keep their
-layout; DOCX files are displayed as readable text in this first version.
+layout; DOCX files are displayed as readable text with approximate pagination
+because original Word styling and embedded images are not preserved.
+
+The tutor conversation history requires the migration in
+`drizzle/0011_clammy_zeigeist.sql`. Apply it to the production database before
+deploying this version; for Supabase, run the migration SQL once in its SQL
+Editor.
 
 ## Organizing decks
 

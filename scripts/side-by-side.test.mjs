@@ -4,7 +4,7 @@ import {
   hasSideBySideStorageCapacity,
   getSideBySideMimeType,
   isSideBySideMimeType,
-  paginateDocxText,
+  paginateMeasuredDocxParagraphs,
   removeTutorMarkdown,
   sanitizeDocumentName,
   SIDE_BY_SIDE_MAX_FILE_BYTES,
@@ -86,16 +86,28 @@ test("tutor answers display cleanly without Markdown markers", () => {
   );
 });
 
-test("DOCX text is divided into numbered-page-sized chunks without losing content", () => {
-  const text = `${"First paragraph. ".repeat(60)}\n\n${"Second paragraph. ".repeat(60)}`;
-  const pages = paginateDocxText(text);
+test("DOCX pagination uses measured paragraph heights and preserves text", () => {
+  const paragraphs = ["First paragraph with several words.", "Another paragraph."];
+  const pages = paginateMeasuredDocxParagraphs(
+    paragraphs,
+    (value) => Math.ceil(value.length / 12) * 12,
+    24,
+    36
+  );
   assert.ok(pages.length > 1);
-  assert.ok(pages.every((page) => page.length <= 1600));
-  assert.equal(pages.join("").replace(/\s/g, ""), text.replace(/\s/g, ""));
+  assert.equal(pages.flat().join(""), paragraphs.join(""));
+  assert.ok(pages.every((page) => page.length > 0));
 });
 
-test("DOCX pagination handles empty input and unusually long unbroken text", () => {
-  assert.deepEqual(paginateDocxText(" \n\n "), []);
-  const pages = paginateDocxText("x".repeat(3201));
-  assert.deepEqual(pages.map((page) => page.length), [1600, 1600, 1]);
+test("DOCX pagination splits a paragraph at measured word boundaries", () => {
+  const text = "one two three four five six seven eight";
+  const pages = paginateMeasuredDocxParagraphs(
+    [text],
+    (value) => Math.ceil(value.length / 8) * 8,
+    16,
+    16
+  );
+  assert.ok(pages.length > 1);
+  assert.equal(pages.flat().join(""), text);
+  assert.ok(pages.every((page) => page.length === 1));
 });

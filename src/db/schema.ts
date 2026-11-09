@@ -101,6 +101,26 @@ export const documentUploadReservations = pgTable(
   ]
 );
 
+export const documentTutorMessages = pgTable(
+  "document_tutor_messages",
+  {
+    id: serial("id").primaryKey(),
+    documentId: integer("document_id")
+      .notNull()
+      .references(() => savedDocuments.id, { onDelete: "cascade" }),
+    role: text("role").notNull(),
+    content: text("content").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("document_tutor_messages_document_created_idx").on(
+      table.documentId,
+      table.createdAt,
+      table.id
+    ),
+  ]
+);
+
 export const studySessions = pgTable(
   "study_sessions",
   {

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { savedDocuments } from "@/db/schema";
+import { documentTutorMessages, savedDocuments } from "@/db/schema";
 import { requireUser } from "@/lib/auth-guard";
 import { isRateLimited } from "@/lib/rate-limit";
 import { generateWithGemini, getGeminiClient, type GeminiClient } from "@/lib/gemini";
@@ -52,7 +52,6 @@ export async function POST(request: NextRequest) {
   const selectedText = typeof body.selectedText === "string" ? body.selectedText.trim() : "";
   const context = typeof body.context === "string" ? body.context.trim() : "";
   const message = typeof body.message === "string" ? body.message.trim() : "";
-  const history = body.history === undefined ? [] : body.history;
 
   if (!Number.isSafeInteger(documentId) || (documentId as number) < 1) {
     return NextResponse.json({ error: "A valid document is required." }, { status: 400 });
@@ -63,10 +62,6 @@ export async function POST(request: NextRequest) {
   if (!message || message.length > 500) {
     return NextResponse.json({ error: "Enter a question of 500 characters or fewer." }, { status: 400 });
   }
-  if (!Array.isArray(history) || history.length > 8 || !history.every(isTutorMessage)) {
-    return NextResponse.json({ error: "The tutor conversation is invalid or too long." }, { status: 400 });
-  }
-
   try {
     const [document] = await db
       .select({ originalName: savedDocuments.originalName })
@@ -78,6 +73,17 @@ export async function POST(request: NextRequest) {
         )
       );
     if (!document) return NextResponse.json({ error: "Document not found" }, { status: 404 });
+
+    const storedHistory = await db
+      .select({
+        role: documentTutorMessages.role,
+        content: documentTutorMessages.content,
+      })
+      .from(documentTutorMessages)
+      .where(eq(documentTutorMessages.documentId, documentId as number))
+      .orderBy(desc(documentTutorMessages.id))
+      .limit(8);
+    const history = storedHistory.reverse().filter(isTutorMessage);
 
     const geminiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
     if (!geminiKey && !process.env.OPENROUTER_API_KEY) {
@@ -109,9 +115,21 @@ export async function POST(request: NextRequest) {
       return generateWithGemini(gemini, candidate, content);
     }, parts);
 
-    return NextResponse.json({
-      explanation: removeTutorMarkdown(result.text).slice(0, 4000),
-    });
+    const explanation = removeTutorMarkdown(result.text).slice(0, 4000);
+    await db.insert(documentTutorMessages).values([
+      {
+        documentId: documentId as number,
+        role: "user",
+        content: message,
+      },
+      {
+        documentId: documentId as number,
+        role: "assistant",
+        content: explanation,
+      },
+    ]);
+
+    return NextResponse.json({ explanation });
   } catch (error) {
     console.error("Side by Side tutor error:", error);
     const message = error instanceof Error ? error.message : "The AI tutor couldn't respond. Please try again.";

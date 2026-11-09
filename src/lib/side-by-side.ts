@@ -61,60 +61,93 @@ export function removeTutorMarkdown(text: string): string {
     .trim();
 }
 
-const DOCX_PAGE_CHARACTER_LIMIT = 1600;
+export function paginateMeasuredDocxParagraphs(
+  paragraphs: string[],
+  measureHeight: (text: string) => number,
+  firstPageCapacity: number,
+  followingPageCapacity: number
+): string[][] {
+  if (firstPageCapacity <= 0 || followingPageCapacity <= 0) return [];
 
-export function paginateDocxText(text: string): string[] {
-  const paragraphs = text.replace(/\r\n?/g, "\n").split(/\n\s*\n/);
-  const pages: string[] = [];
-  let currentPage = "";
+  const pages: string[][] = [];
+  let currentPage: string[] = [];
+  let currentHeight = 0;
+  let pageCapacity = firstPageCapacity;
+  const finishPage = () => {
+    if (currentPage.length) pages.push(currentPage);
+    currentPage = [];
+    currentHeight = 0;
+    pageCapacity = followingPageCapacity;
+  };
 
-  const appendParagraph = (paragraph: string) => {
-    const nextPage = currentPage ? `${currentPage}\n\n${paragraph}` : paragraph;
-    if (nextPage.length <= DOCX_PAGE_CHARACTER_LIMIT) {
-      currentPage = nextPage;
-      return;
-    }
+  const splitParagraph = (value: string, capacity: number): string[] => {
+    const words = value.match(/\S+\s*/g) ?? [value];
+    const chunks: string[] = [];
+    let wordStart = 0;
 
-    if (currentPage) {
-      pages.push(currentPage);
-      currentPage = "";
-    }
-
-    if (paragraph.length <= DOCX_PAGE_CHARACTER_LIMIT) {
-      currentPage = paragraph;
-      return;
-    }
-
-    const words = paragraph.match(/\S+\s*/g) ?? [];
-    for (const word of words) {
-      if (word.length > DOCX_PAGE_CHARACTER_LIMIT) {
-        if (currentPage) {
-          pages.push(currentPage);
-          currentPage = "";
+    while (wordStart < words.length) {
+      let low = wordStart + 1;
+      let high = words.length;
+      let best = wordStart;
+      while (low <= high) {
+        const middle = Math.floor((low + high) / 2);
+        const candidate = words.slice(wordStart, middle).join("");
+        if (measureHeight(candidate) <= capacity) {
+          best = middle;
+          low = middle + 1;
+        } else {
+          high = middle - 1;
         }
-        for (let offset = 0; offset < word.length; offset += DOCX_PAGE_CHARACTER_LIMIT) {
-          const chunk = word.slice(offset, offset + DOCX_PAGE_CHARACTER_LIMIT);
-          if (chunk.length === DOCX_PAGE_CHARACTER_LIMIT) pages.push(chunk);
-          else currentPage = chunk;
-        }
-        continue;
       }
 
-      const nextChunk = currentPage ? `${currentPage}${word}` : word;
-      if (nextChunk.length > DOCX_PAGE_CHARACTER_LIMIT && currentPage) {
-        pages.push(currentPage);
-        currentPage = word;
+      if (best === wordStart) {
+        const word = words[wordStart];
+        let lowLength = 1;
+        let highLength = word.length;
+        let bestLength = 0;
+        while (lowLength <= highLength) {
+          const middle = Math.floor((lowLength + highLength) / 2);
+          if (measureHeight(word.slice(0, middle)) <= capacity) {
+            bestLength = middle;
+            lowLength = middle + 1;
+          } else {
+            highLength = middle - 1;
+          }
+        }
+        const safeLength = Math.max(1, bestLength);
+        chunks.push(word.slice(0, safeLength));
+        if (safeLength === word.length) {
+          wordStart += 1;
+        } else {
+          words[wordStart] = word.slice(safeLength);
+        }
       } else {
-        currentPage = nextChunk;
+        chunks.push(words.slice(wordStart, best).join(""));
+        wordStart = best;
       }
     }
+    return chunks;
   };
 
   for (const paragraph of paragraphs) {
-    const normalized = paragraph.trim();
-    if (normalized) appendParagraph(normalized);
-  }
-  if (currentPage) pages.push(currentPage);
+    let paragraphHeight = measureHeight(paragraph);
+    if (currentHeight + paragraphHeight > pageCapacity && currentPage.length) finishPage();
 
+    if (paragraphHeight <= pageCapacity - currentHeight) {
+      currentPage.push(paragraph);
+      currentHeight += paragraphHeight;
+      continue;
+    }
+
+    const chunks = splitParagraph(paragraph, pageCapacity);
+    for (const chunk of chunks) {
+      paragraphHeight = measureHeight(chunk);
+      if (currentHeight + paragraphHeight > pageCapacity && currentPage.length) finishPage();
+      currentPage.push(chunk);
+      currentHeight += paragraphHeight;
+      if (currentHeight >= pageCapacity) finishPage();
+    }
+  }
+  finishPage();
   return pages;
 }

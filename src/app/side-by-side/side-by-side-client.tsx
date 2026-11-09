@@ -18,9 +18,9 @@ import {
   X,
 } from "lucide-react";
 import { PdfDocumentViewer } from "./pdf-document-viewer";
+import { DocxDocumentViewer } from "./docx-document-viewer";
 import {
   getSideBySideMimeType,
-  paginateDocxText,
   sanitizeDocumentName,
   SIDE_BY_SIDE_MAX_FILE_BYTES,
   SIDE_BY_SIDE_STORAGE_LIMIT_BYTES,
@@ -99,20 +99,21 @@ export default function SideBySideClient() {
   const [selectionContext, setSelectionContext] = useState("");
   const [selectionAction, setSelectionAction] = useState<{ left: number; top: number } | null>(null);
   const [messages, setMessages] = useState<TutorMessage[]>([]);
+  const [conversationDocumentId, setConversationDocumentId] = useState<number | null>(null);
   const [question, setQuestion] = useState("");
   const [tutorBusy, setTutorBusy] = useState(false);
   const [tutorError, setTutorError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const docxScrollRef = useRef<HTMLDivElement>(null);
   const readerContentRef = useRef<HTMLDivElement>(null);
   const progressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scrollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeDocumentId = activeDocument?.id;
+  const conversationLoading =
+    !!activeDocumentId && activeDocumentId !== conversationDocumentId;
   const activeDocumentMimeType = activeDocument?.mimeType;
   const activeDocumentLastScrollTop = activeDocument?.lastScrollTop ?? 0;
   const docxText =
     loadedDocx && loadedDocx.documentId === activeDocumentId ? loadedDocx.text : "";
-  const docxPages = paginateDocxText(docxText);
   const documentLoading =
     activeDocumentMimeType === DOCX_MIME &&
     loadedDocx?.documentId !== activeDocumentId &&
@@ -196,13 +197,50 @@ export default function SideBySideClient() {
   }, [activeDocumentId, activeDocumentMimeType]);
 
   useEffect(() => {
-    if (!activeDocumentId || activeDocumentMimeType !== DOCX_MIME || !docxScrollRef.current) return;
-    const element = docxScrollRef.current;
-    const timer = window.setTimeout(() => {
-      element.scrollTop = activeDocumentLastScrollTop;
-    }, 0);
-    return () => window.clearTimeout(timer);
-  }, [activeDocumentId, activeDocumentLastScrollTop, activeDocumentMimeType, docxText]);
+    if (!activeDocumentId) return;
+
+    let active = true;
+    fetch(`/api/side-by-side/documents/${activeDocumentId}/conversation`, { cache: "no-store" })
+      .then(async (response) => {
+        const body: unknown = await response.json();
+        if (!response.ok) {
+          throw new Error(errorFromResponse(body, "Couldn't load this tutor conversation."));
+        }
+        if (
+          !body ||
+          typeof body !== "object" ||
+          !("messages" in body) ||
+          !Array.isArray(body.messages) ||
+          !body.messages.every(
+            (message) =>
+              !!message &&
+              typeof message === "object" &&
+              "role" in message &&
+              (message.role === "user" || message.role === "assistant") &&
+              "content" in message &&
+              typeof message.content === "string"
+          )
+        ) {
+          throw new Error("The tutor conversation response was invalid.");
+        }
+        if (active) setMessages(body.messages as TutorMessage[]);
+      })
+      .catch((cause: unknown) => {
+        if (active) {
+          setMessages([]);
+          setTutorError(
+            cause instanceof Error ? cause.message : "Couldn't load this tutor conversation."
+          );
+        }
+      })
+      .finally(() => {
+        if (active) setConversationDocumentId(activeDocumentId);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [activeDocumentId]);
 
   useEffect(
     () => () => {
@@ -296,6 +334,7 @@ export default function SideBySideClient() {
       setPageNumber(document.lastPage);
       setPageCount(Math.max(1, document.lastPage));
       setMessages([]);
+      setConversationDocumentId(null);
       setSelectedText("");
       setSelectionContext("");
       setSelectionAction(null);
@@ -353,7 +392,6 @@ export default function SideBySideClient() {
       if (text.length > 5000) {
         setSelectedText("");
         setSelectionContext("");
-        setMessages([]);
         setSelectionAction(null);
         setTutorError("Select a shorter passage (up to 5,000 characters) to explain it.");
         return;
@@ -364,7 +402,6 @@ export default function SideBySideClient() {
       const left = Math.min(Math.max(rect.left + rect.width / 2 - 88, 12), window.innerWidth - 188);
       setSelectedText(text);
       setTutorError("");
-      setMessages([]);
 
       const readerText = readerContentRef.current?.innerText ?? "";
       const position = readerText.indexOf(text);
@@ -384,11 +421,10 @@ export default function SideBySideClient() {
   }, [activeDocumentId, activeDocumentMimeType, pageNumber]);
 
   const askTutor = async (message: string) => {
-    if (!activeDocument || !selectedText || tutorBusy) return;
+    if (!activeDocument || !selectedText || tutorBusy || conversationLoading) return;
     const normalizedMessage = message.trim().slice(0, 500);
     if (!normalizedMessage) return;
 
-    const previousMessages = messages.slice(-8);
     const nextMessages = [...messages, { role: "user" as const, content: normalizedMessage }];
     setMessages(nextMessages);
     setQuestion("");
@@ -405,7 +441,6 @@ export default function SideBySideClient() {
           selectedText,
           context: selectionContext,
           message: normalizedMessage,
-          history: previousMessages,
         }),
       });
       const body: unknown = await response.json();
@@ -433,10 +468,9 @@ export default function SideBySideClient() {
   }, []);
   const onPdfError = useCallback((message: string) => setReaderError(message), []);
 
-  const handleDocxScroll = () => {
-    if (!activeDocument || !docxScrollRef.current) return;
+  const handleDocxScroll = (lastScrollTop: number) => {
+    if (!activeDocument) return;
     const documentId = activeDocument.id;
-    const lastScrollTop = Math.round(docxScrollRef.current.scrollTop);
     if (scrollTimerRef.current) clearTimeout(scrollTimerRef.current);
     scrollTimerRef.current = setTimeout(() => {
       saveProgress(documentId, { lastScrollTop });
@@ -551,6 +585,7 @@ export default function SideBySideClient() {
                       setPageNumber(document.lastPage);
                       setPageCount(Math.max(1, document.lastPage));
                       setMessages([]);
+                      setConversationDocumentId(null);
                       setSelectedText("");
                       setSelectionAction(null);
                       setSaveMessage("");
@@ -594,6 +629,7 @@ export default function SideBySideClient() {
               className="sbs-toolbar-back"
               onClick={() => {
                 setActiveDocument(null);
+                setConversationDocumentId(null);
                 setSelectionAction(null);
                 void loadDocuments().catch((cause: unknown) => {
                   setError(cause instanceof Error ? cause.message : "Couldn't refresh your documents.");
@@ -658,21 +694,14 @@ export default function SideBySideClient() {
                 ) : documentLoading ? (
                   <div className="sbs-reader-message"><LoaderCircle className="sbs-spin" /> Opening Word document…</div>
                 ) : (
-                  <div
-                    ref={docxScrollRef}
-                    className="sbs-docx-scroll"
+                  <DocxDocumentViewer
+                    key={activeDocument.id}
+                    documentId={activeDocument.id}
+                    originalName={activeDocument.originalName}
+                    text={docxText}
+                    initialScrollTop={activeDocumentLastScrollTop}
                     onScroll={handleDocxScroll}
-                    tabIndex={0}
-                    aria-label="Word document text"
-                  >
-                    {docxPages.map((text, index) => (
-                      <article className="sbs-docx-page" key={`${activeDocument.id}-${index}`}>
-                        {index === 0 && <h2>{activeDocument.originalName}</h2>}
-                        <div className="sbs-docx-page-text">{text}</div>
-                        <footer className="sbs-docx-page-number">Page {index + 1}</footer>
-                      </article>
-                    ))}
-                  </div>
+                  />
                 )}
               </div>
               {selectionAction && selectedText && (
@@ -703,7 +732,6 @@ export default function SideBySideClient() {
                     onClick={() => {
                       setSelectedText("");
                       setSelectionContext("");
-                      setMessages([]);
                       setTutorError("");
                     }}
                   >
@@ -728,7 +756,12 @@ export default function SideBySideClient() {
               {tutorError && <p className="sbs-tutor-error" role="alert">{tutorError}</p>}
 
               <div className="sbs-chat" aria-live="polite">
-                {messages.map((message, index) => (
+                {conversationLoading && (
+                  <div className="sbs-message sbs-message-assistant sbs-thinking">
+                    <LoaderCircle className="sbs-spin" size={16} /> Loading saved conversation…
+                  </div>
+                )}
+                {!conversationLoading && messages.map((message, index) => (
                   <div className={`sbs-message sbs-message-${message.role}`} key={`${index}-${message.role}`}>
                     <p>{message.content}</p>
                   </div>
@@ -746,12 +779,12 @@ export default function SideBySideClient() {
                   id="sbs-question"
                   value={question}
                   maxLength={500}
-                  disabled={!selectedText || tutorBusy}
+                  disabled={!selectedText || tutorBusy || conversationLoading}
                   onChange={(event) => setQuestion(event.target.value)}
                   placeholder={selectedText ? "Ask a follow-up…" : "Highlight a passage to start"}
                   rows={2}
                 />
-                <button type="submit" disabled={!selectedText || !question.trim() || tutorBusy} aria-label="Send question">
+                <button type="submit" disabled={!selectedText || !question.trim() || tutorBusy || conversationLoading} aria-label="Send question">
                   {tutorBusy ? <LoaderCircle className="sbs-spin" size={17} /> : <Send size={17} aria-hidden />}
                 </button>
               </form>
