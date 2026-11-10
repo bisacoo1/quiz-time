@@ -85,12 +85,12 @@ export function LandingPage() {
         <div className="landing-preview" aria-label="Example QuizTime flashcard">
           <div className="landing-preview-glow" />
           <div className="landing-preview-note landing-preview-note-top">
-            <span className="landing-note-icon"><Sparkles size={16} aria-hidden /></span>
+            <span className="landing-note-icon"><Sparkles size={16} strokeWidth={2.5} aria-hidden /></span>
             <span><strong>One small session</strong><small>can make a big difference</small></span>
           </div>
           <div className="landing-flashcard">
             <div className="landing-flashcard-top">
-              <span><BookOpenCheck size={15} aria-hidden /> QUICK STUDY</span>
+              <span><BookOpenCheck size={15} strokeWidth={2.5} aria-hidden /> QUICK STUDY</span>
               <span>01 / 12</span>
             </div>
             <div className="landing-flashcard-content">
@@ -116,9 +116,9 @@ export function LandingPage() {
       </section>
 
       <div className="landing-proof-strip" aria-label="Study tools included">
-        <span><BookOpenCheck size={17} aria-hidden /> Flashcards from your notes</span>
-        <span><Brain size={17} aria-hidden /> Four ways to practice</span>
-        <span><Sparkles size={17} aria-hidden /> AI help when you need it</span>
+        <span><BookOpenCheck size={17} strokeWidth={2.5} aria-hidden /> Flashcards from your notes</span>
+        <span><Brain size={17} strokeWidth={2.5} aria-hidden /> Four ways to practice</span>
+        <span><Sparkles size={17} strokeWidth={2.5} aria-hidden /> AI help when you need it</span>
       </div>
 
       <section className="landing-features" id="features">
@@ -174,6 +174,9 @@ export function LandingPage() {
         <p>Made for curious minds and one-card-at-a-time progress.</p>
         <span>© {new Date().getFullYear()} QuizTime</span>
       </footer>
+      <div className="landing-footer-low">
+        Developed by <strong>FBC BSIT 3-A</strong> · QuizTime © {new Date().getFullYear()}
+      </div>
     </main>
   );
 }
