@@ -7,6 +7,7 @@ import { db } from "@/db";
 import { users, type User } from "@/db/schema";
 import { isOwnerEmail } from "@/lib/owner";
 import { isMaintenanceAccessAllowed } from "@/lib/maintenance";
+import { normalizeAuthEmail } from "@/lib/auth-email";
 
 /**
  * Auth.js (v5) — Google OAuth with JWT sessions.
@@ -115,15 +116,23 @@ export const authConfig = {
         password: { label: "Password", type: "password" },
       },
       async authorize(credentials) {
-        if (!credentials?.email || !credentials?.password) return null;
+        if (
+          typeof credentials?.email !== "string" ||
+          typeof credentials?.password !== "string" ||
+          !credentials.email.trim() ||
+          !credentials.password
+        ) {
+          return null;
+        }
+        const email = normalizeAuthEmail(credentials.email);
         const [user] = await db
           .select()
           .from(users)
-          .where(eq(users.email, credentials.email as string))
+          .where(eq(users.email, email))
           .limit(1);
         if (!user || !user.password) return null;
 
-        const isValid = await bcrypt.compare(credentials.password as string, user.password);
+        const isValid = await bcrypt.compare(credentials.password, user.password);
         if (!isValid) return null;
 
         return {
