@@ -141,13 +141,13 @@ export function LoginPage({
       });
 
       if (result?.error) {
-        setFormError(AUTH_ERRORS[result.error] ?? "Invalid email or password.");
+        setFormError(AUTH_ERRORS[result.error] ?? result.error ?? "Invalid email or password.");
         setSigningIn(false);
       } else {
         window.location.href = "/";
       }
-    } catch {
-      setFormError(AUTH_ERRORS.Default);
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : AUTH_ERRORS.Default);
       setSigningIn(false);
     }
   };
