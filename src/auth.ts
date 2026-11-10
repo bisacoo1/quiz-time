@@ -8,6 +8,7 @@ import { users, type User } from "@/db/schema";
 import { isOwnerEmail } from "@/lib/owner";
 import { isMaintenanceAccessAllowed } from "@/lib/maintenance";
 import { normalizeAuthEmail } from "@/lib/auth-email";
+import { resolveAuthRedirect } from "@/lib/auth-redirect";
 
 /**
  * Auth.js (v5) — Google OAuth with JWT sessions.
@@ -195,17 +196,7 @@ export const authConfig = {
       return isMaintenanceAccessAllowed(user.email);
     },
     async redirect({ url, baseUrl }) {
-      if (url.startsWith("/")) return url;
-      try {
-        const target = new URL(url, baseUrl);
-        const base = new URL(baseUrl);
-        if (target.origin === base.origin) {
-          return `${target.pathname}${target.search}${target.hash}`;
-        }
-      } catch {
-        /* invalid URL */
-      }
-      return baseUrl;
+      return resolveAuthRedirect(url, baseUrl);
     },
     async jwt({ token, user }) {
       // `user` is only present on the first callback right after sign-in.

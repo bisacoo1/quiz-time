@@ -18,6 +18,7 @@
     "test:maintenance": "tsx --test scripts/maintenance.test.mjs",
     "test:auth-register": "tsx --experimental-test-module-mocks scripts/auth-register.test.mjs",
     "test:auth-email": "tsx --test scripts/auth-email.test.mjs",
+    "test:auth-redirect": "tsx --test scripts/auth-redirect.test.mjs",
     "test:side-by-side": "tsx --test scripts/side-by-side.test.mjs",
     "test:side-by-side-generation": "tsx --experimental-test-module-mocks scripts/side-by-side-generation.test.mjs",
     "test:reminders-e2e": "node scripts/reminders-e2e.mjs",
