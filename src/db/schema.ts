@@ -18,6 +18,7 @@ export const users = pgTable("users", {
   name: text("name"),
   image: text("image"),
   provider: text("provider").notNull().default("google"),
+  password: text("password"),
   /**
    * The student's course / program (e.g. "BS Pharmacy"), chosen in the
    * first-login course picker. Free text: a known program from

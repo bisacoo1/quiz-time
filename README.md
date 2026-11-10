@@ -583,13 +583,19 @@ make sure something calls the route every ~10 minutes:
 
 ## Accounts and sign-in
 
-Visitors see a **login page first** (QuizTime logo + Continue with Google). After
+Visitors see a **login page first** (QuizTime logo + sign-in options). After
 sign-in they land in the app. Decks are private to each account: uploading,
 generating, studying and deleting all require a session, and every query is
-scoped to the signed-in user (there is no anonymous data, so nobody can read or
-delete someone else's decks by guessing an id).
+scoped to the signed-in user.
 
-### 1. Create the Google OAuth client
+### Sign-in options
+
+1. **Google Login** – Recommended for the best experience.
+2. **Email & Password** – Create a local account with your email and a password.
+3. **Demo Student** – If `DEMO_LOGIN=1` is set in the environment, a one-tap
+   demo account is available for testing.
+
+### 1. Create the Google OAuth client (Optional)
 
 1. Go to [console.cloud.google.com/apis/credentials](https://console.cloud.google.com/apis/credentials).
 2. **Create credentials → OAuth client ID → Web application**.

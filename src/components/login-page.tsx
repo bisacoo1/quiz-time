@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { signIn } from "next-auth/react";
-import { CloudOff, FlaskConical, WifiOff } from "lucide-react";
+import { CloudOff, FlaskConical, WifiOff, Mail, Lock, User, ArrowRight } from "lucide-react";
 import {
   enableOfflineMode,
   isOfflineMode,
@@ -18,6 +18,7 @@ const AUTH_ERRORS: Record<string, string> = {
   OAuthAccountNotLinked: "This email is already used with a different sign-in method.",
   OAuthCallback: "Google sign-in didn't finish. Please try again.",
   Callback: "Sign-in didn't finish. Please try again.",
+  CredentialsSignin: "Invalid email or password. Please try again.",
   Default: "Something went wrong signing in. Please try again.",
 };
 
@@ -32,11 +33,6 @@ function GoogleMark() {
   );
 }
 
-/**
- * Full-screen login shown to visitors before the rest of the app.
- * The QuizTime logo is the hero — sized large so it reads as the brand,
- * not a tiny favicon.
- */
 export function LoginPage({
   loading = false,
   error: errorCode,
@@ -49,16 +45,17 @@ export function LoginPage({
     errorCode ? (AUTH_ERRORS[errorCode] ?? AUTH_ERRORS.Default) : null
   );
 
-  // Offline escape hatch: if this device has a cached profile (i.e. the account
-  // signed in here before) the app can be opened with no network at all.
+  const [authMode, setAuthMode] = useState<"choose" | "email-signin" | "email-signup">("choose");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [name, setName] = useState("");
+  const [formError, setFormError] = useState("");
+
   const [cached, setCached] = useState<OfflineProfile | null>(null);
   const [offlineAvailable, setOfflineAvailable] = useState(false);
   const [checking, setChecking] = useState(false);
-
   const [browserOffline, setBrowserOffline] = useState(false);
 
-  // Demo sign-in is a server-side opt-in (DEMO_LOGIN=1, dev/preview only) —
-  // the config endpoint tells us whether to offer the button.
   const [demoLogin, setDemoLogin] = useState(false);
   useEffect(() => {
     let alive = true;
@@ -83,8 +80,6 @@ export function LoginPage({
       const profile = await readCachedProfile();
       if (!alive) return;
       setCached(profile);
-      // Offered whenever this device knows the account — useful both offline
-      // and when sign-in itself is unreachable.
       setOfflineAvailable(Boolean(profile) || isOfflineMode());
     })();
     return () => {
@@ -94,7 +89,7 @@ export function LoginPage({
     };
   }, []);
 
-  const handleSignIn = () => {
+  const handleGoogleSignIn = () => {
     setSigningIn(true);
     void signIn("google", { callbackUrl: "/" }).catch(() => {
       setSigningIn(false);
@@ -110,7 +105,53 @@ export function LoginPage({
     });
   };
 
-  /** Open the app from the cache: no session, no API, just the saved sets. */
+  const handleEmailSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    setFormError("");
+    if (!email || !password) {
+      setFormError("Please fill in all fields.");
+      return;
+    }
+
+    setSigningIn(true);
+
+    if (authMode === "email-signup") {
+      try {
+        const res = await fetch("/api/auth/register", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name, email, password }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.error || "Failed to create account");
+        }
+      } catch (err) {
+        setFormError(err instanceof Error ? err.message : "Registration failed");
+        setSigningIn(false);
+        return;
+      }
+    }
+
+    try {
+      const result = await signIn("credentials", {
+        email,
+        password,
+        redirect: false,
+      });
+
+      if (result?.error) {
+        setFormError(AUTH_ERRORS[result.error] ?? "Invalid email or password.");
+        setSigningIn(false);
+      } else {
+        window.location.href = "/";
+      }
+    } catch {
+      setFormError(AUTH_ERRORS.Default);
+      setSigningIn(false);
+    }
+  };
+
   const continueOffline = () => {
     enableOfflineMode(true);
     window.location.replace("/");
@@ -211,34 +252,161 @@ export function LoginPage({
               </div>
             )}
 
-            <button
-              className="btn btn-lg login-google"
-              onClick={handleSignIn}
-              disabled={signingIn}
-            >
-              {signingIn ? (
-                <>
-                  <div
-                    className="spinner"
-                    style={{
-                      width: 20,
-                      height: 20,
-                      borderWidth: 2.5,
-                      borderColor: "rgba(29,78,216,0.2)",
-                      borderTopColor: "var(--blue-dark)",
-                    }}
-                  />
-                  Redirecting to Google…
-                </>
-              ) : (
-                <>
+            {authMode === "choose" ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                <button
+                  className="btn btn-lg login-google"
+                  onClick={handleGoogleSignIn}
+                  disabled={signingIn}
+                >
                   <GoogleMark />
                   Continue with Google
-                </>
-              )}
-            </button>
+                </button>
 
-            {demoLogin && (
+                <button
+                  className="btn btn-secondary btn-lg"
+                  style={{ width: "100%" }}
+                  onClick={() => setAuthMode("email-signin")}
+                  disabled={signingIn}
+                >
+                  <Mail size={18} />
+                  Sign in with Email & Password
+                </button>
+
+                <button
+                  className="btn btn-ghost btn-md"
+                  style={{ width: "100%", marginTop: 4 }}
+                  onClick={() => setAuthMode("email-signup")}
+                  disabled={signingIn}
+                >
+                  Create an account <ArrowRight size={16} />
+                </button>
+              </div>
+            ) : (
+              <form onSubmit={handleEmailSubmit} style={{ display: "flex", flexDirection: "column", gap: 12, textAlign: "left" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                  <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700 }}>
+                    {authMode === "email-signup" ? "Create an Account" : "Sign In with Email"}
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => { setAuthMode("choose"); setFormError(""); }}
+                    style={{ background: "none", border: "none", color: "var(--blue-dark)", fontSize: 12, cursor: "pointer", fontWeight: 600 }}
+                  >
+                    Back to options
+                  </button>
+                </div>
+
+                {formError && (
+                  <p className="login-error" role="alert" style={{ margin: 0 }}>
+                    {formError}
+                  </p>
+                )}
+
+                {authMode === "email-signup" && (
+                  <div>
+                    <label style={{ display: "block", fontSize: 11, fontWeight: 700, marginBottom: 4, color: "var(--text-muted)" }}>
+                      Full Name
+                    </label>
+                    <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+                      <User size={16} style={{ position: "absolute", left: 12, color: "var(--text-muted)" }} />
+                      <input
+                        type="text"
+                        placeholder="John Doe"
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                        style={{
+                          width: "100%",
+                          padding: "10px 12px 10px 36px",
+                          borderRadius: 12,
+                          border: "1px solid var(--border-color)",
+                          background: "var(--bg-subtle, #f9fafb)",
+                          fontSize: 14,
+                          outline: "none",
+                        }}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                <div>
+                  <label style={{ display: "block", fontSize: 11, fontWeight: 700, marginBottom: 4, color: "var(--text-muted)" }}>
+                    Email Address
+                  </label>
+                  <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+                    <Mail size={16} style={{ position: "absolute", left: 12, color: "var(--text-muted)" }} />
+                    <input
+                      type="email"
+                      required
+                      placeholder="you@example.com"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      style={{
+                        width: "100%",
+                        padding: "10px 12px 10px 36px",
+                        borderRadius: 12,
+                        border: "1px solid var(--border-color)",
+                        background: "var(--bg-subtle, #f9fafb)",
+                        fontSize: 14,
+                        outline: "none",
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label style={{ display: "block", fontSize: 11, fontWeight: 700, marginBottom: 4, color: "var(--text-muted)" }}>
+                    Password {authMode === "email-signup" && "(at least 6 characters)"}
+                  </label>
+                  <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+                    <Lock size={16} style={{ position: "absolute", left: 12, color: "var(--text-muted)" }} />
+                    <input
+                      type="password"
+                      required
+                      placeholder="••••••••"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      style={{
+                        width: "100%",
+                        padding: "10px 12px 10px 36px",
+                        borderRadius: 12,
+                        border: "1px solid var(--border-color)",
+                        background: "var(--bg-subtle, #f9fafb)",
+                        fontSize: 14,
+                        outline: "none",
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  className="btn btn-primary btn-lg"
+                  style={{ width: "100%", marginTop: 4 }}
+                  disabled={signingIn}
+                >
+                  {signingIn ? (
+                    <>
+                      <div
+                        className="spinner"
+                        style={{
+                          width: 20,
+                          height: 20,
+                          borderWidth: 2.5,
+                          borderColor: "rgba(255,255,255,0.2)",
+                          borderTopColor: "#fff",
+                        }}
+                      />
+                      {authMode === "email-signup" ? "Creating account…" : "Signing in…"}
+                    </>
+                  ) : (
+                    <>{authMode === "email-signup" ? "Create Account" : "Sign In"}</>
+                  )}
+                </button>
+              </form>
+            )}
+
+            {demoLogin && authMode === "choose" && (
               <>
                 <div
                   style={{
@@ -268,8 +436,8 @@ export function LoginPage({
               </>
             )}
 
-            <p className="login-footnote">
-              Free · no password to remember · your decks stay in your account
+            <p className="login-footnote" style={{ marginTop: 16 }}>
+              Free · your decks stay in your account
             </p>
           </>
         )}
