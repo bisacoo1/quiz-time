@@ -144,7 +144,7 @@ export function LoginPage({
         setFormError(AUTH_ERRORS[result.error] ?? result.error ?? "Invalid email or password.");
         setSigningIn(false);
       } else {
-        window.location.href = "/";
+        window.location.assign("/");
       }
     } catch (err) {
       setFormError(err instanceof Error ? err.message : AUTH_ERRORS.Default);

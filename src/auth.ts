@@ -186,19 +186,15 @@ export const authConfig = {
       return isMaintenanceAccessAllowed(user.email);
     },
     async redirect({ url, baseUrl }) {
-      // Behind proxies the Host header can be an internal address (0.0.0.0,
-      // tunnel ids, …), while the browser sits on the public preview origin.
-      // Collapsing same-origin redirects to a RELATIVE path keeps the visitor
-      // on the origin they actually loaded the app from; anything else falls
-      // back to the Auth.js default (baseUrl) — never an open redirect.
       if (url.startsWith("/")) return url;
       try {
-        const target = new URL(url);
-        if (target.origin === new URL(baseUrl).origin) {
+        const target = new URL(url, baseUrl);
+        const base = new URL(baseUrl);
+        if (target.origin === base.origin) {
           return `${target.pathname}${target.search}${target.hash}`;
         }
       } catch {
-        /* not an absolute URL — treat as unsafe below */
+        /* invalid URL */
       }
       return baseUrl;
     },
