@@ -208,6 +208,14 @@ export const authConfig = {
       if (user && user.id) {
         // `provider` lives on the AdapterUser half of the union.
         const provider = (user as { provider?: string }).provider ?? "google";
+
+        // Credentials and demo users are already fully created and persisted
+        // in our database — no upsert needed.
+        if (provider === "credentials" || provider === "demo") {
+          token.userId = user.id;
+          return token;
+        }
+
         // Google always sends an email for accounts it lets you sign in
         // with, but fall back to a synthetic one so the NOT NULL column
         // never breaks a login.
