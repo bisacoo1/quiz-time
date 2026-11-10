@@ -43,6 +43,9 @@ an AI tutor and spaced repetition. It works offline as an installable PWA.
   graded Again / Hard / Good / Easy.
 - **Side by Side** – save a PDF or DOCX, read it in the app, highlight a passage
   for an AI explanation, and return later to your saved reading position.
+- **Cards from your highlights** – in the Side by Side reader, tick the passages
+  you saved and generate a reviewable flashcard set from just those highlights
+  (max 12 cards), which lands in the Upload tab for editing before saving.
 
 **Learning aids**
 
@@ -133,7 +136,7 @@ is sent to the AI together and combined into **one deck**.
 - PDFs and images go to Gemini directly. **Word files are converted to text on
   the server** (`mammoth`) because Gemini can't read `.docx` binaries. Old
   binary `.doc` files aren't supported – re-save as `.docx` or export to PDF.
-- Limits: 15 MB per file, 24 MB total, 8 files.
+- Limits: 50 MB per file, 50 MB total, 8 files.
 - Generation is sign-in-only and rate-limited to 10 requests per 10 minutes per
   user on `/api/scan` (a soft limit, per server instance), so nobody can burn
   your AI free tier.
@@ -212,6 +215,14 @@ paragraphs, and page numbers are shown in the reader. Tutor conversations are
 saved per document and restored when that document is reopened; use the trash
 button in the tutor panel to delete that document's conversation. Documents can
 be deleted from the library.
+
+**Making flashcards from your highlights.** In the Highlights panel, tick the
+passages you saved (or **Select all**) and choose **Make flashcards (N)**. The
+selection is sent to the same card generator as an upload, but only the selected
+text is used – no files, and the AI is told to stay faithful to the source. Up to
+12 cards come back as an unsaved draft in the Upload tab, where you can review,
+edit and save it like any other generated set. Generation counts against the
+same rate limit as uploads and needs a connection.
 
 Before enabling uploads, create and connect a **private** Vercel Blob store for
 the project, then add its `BLOB_READ_WRITE_TOKEN` to local development and the
@@ -391,7 +402,10 @@ the app works with Gemini only, OpenRouter only, or both.
 - **The user is told.** `POST /api/scan` returns the `model` and `provider` that
   produced the cards, plus a human-readable `notice` when it had to switch
   ("gemini-3.6-flash hit its request limit – generated with
-  gemini-3.1-flash-lite instead."), which the UI shows as a toast.
+  gemini-3.1-flash-lite instead."). The `notice` is returned on the wire but
+  **not yet shown by the UI** – neither the upload path in `src/app/page.tsx`
+  nor the highlight path in `src/app/side-by-side/side-by-side-client.tsx`
+  reads it.
 - **When every model is at its limit**, the endpoint answers **429** ("Every AI
   model is at its request limit right now … please try again") rather than a
   generic 500.
@@ -887,6 +901,7 @@ npm run test:e2e          # auth/stats e2e suite (minted JWTs, real HTTP)
 npm run test:presence-e2e # owner-only roster e2e (needs OWNER_EMAIL, db + server)
 npm run test:deck-editor  # deck editor e2e (same requirements as test:e2e)
 npm run test:mode-switch  # quiz mode tab row: sideways drag/scroll (Playwright, mocked APIs)
+npm run test:side-by-side-generation  # flashcards generated from Side by Side highlights
 ```
 
 ## Notes

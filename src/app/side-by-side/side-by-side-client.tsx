@@ -11,6 +11,7 @@ import {
   Check,
   FileText,
   Highlighter,
+  Layers,
   LoaderCircle,
   MessageCircle,
   NotebookPen,
@@ -32,6 +33,7 @@ import {
   SIDE_BY_SIDE_HIGHLIGHT_NOTE_MAX_LENGTH,
   isValidSideBySideHighlightRects,
   type SideBySideHighlightRect,
+  SIDE_BY_SIDE_FLASHCARD_HANDOFF_KEY,
 } from "@/lib/side-by-side";
 
 interface SavedDocument {
@@ -57,6 +59,29 @@ interface SavedHighlight {
   rects: SideBySideHighlightRect[];
   createdAt: string;
   updatedAt: string;
+}
+
+interface GeneratedHighlightCard {
+  question: string;
+  answer: string;
+  hint: string;
+  difficulty: "easy" | "medium" | "hard";
+}
+
+function isGeneratedHighlightCard(value: unknown): value is GeneratedHighlightCard {
+  return (
+    !!value &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    "question" in value &&
+    typeof value.question === "string" &&
+    "answer" in value &&
+    typeof value.answer === "string" &&
+    "hint" in value &&
+    typeof value.hint === "string" &&
+    "difficulty" in value &&
+    (value.difficulty === "easy" || value.difficulty === "medium" || value.difficulty === "hard")
+  );
 }
 
 function isSavedHighlight(value: unknown): value is SavedHighlight {
@@ -183,6 +208,7 @@ export default function SideBySideClient() {
   const [selectionRects, setSelectionRects] = useState<SideBySideHighlightRect[]>([]);
   const [selectionExplained, setSelectionExplained] = useState(false);
   const [savedHighlights, setSavedHighlights] = useState<SavedHighlight[]>([]);
+  const [selectedHighlightIds, setSelectedHighlightIds] = useState<number[]>([]);
   const [highlightsDocumentId, setHighlightsDocumentId] = useState<number | null>(null);
   const [activePanel, setActivePanel] = useState<"tutor" | "highlights">("tutor");
   const [highlightsError, setHighlightsError] = useState("");
@@ -192,6 +218,7 @@ export default function SideBySideClient() {
   const [deletingHighlightId, setDeletingHighlightId] = useState<number | null>(null);
   const [pendingHighlightPage, setPendingHighlightPage] = useState<number | null>(null);
   const pendingHighlightPageRef = useRef<number | null>(null);
+  const [generatingHighlightCards, setGeneratingHighlightCards] = useState(false);
   const [messages, setMessages] = useState<TutorMessage[]>([]);
   const [conversationDocumentId, setConversationDocumentId] = useState<number | null>(null);
   const [question, setQuestion] = useState("");
@@ -363,12 +390,14 @@ export default function SideBySideClient() {
         }
         if (active) {
           setSavedHighlights(body.highlights);
+          setSelectedHighlightIds(body.highlights.map((highlight) => highlight.id));
           setHighlightsError("");
         }
       })
       .catch((cause: unknown) => {
         if (active) {
           setSavedHighlights([]);
+          setSelectedHighlightIds([]);
           setHighlightsError(
             cause instanceof Error ? cause.message : "Couldn't load saved highlights."
           );
@@ -596,6 +625,7 @@ export default function SideBySideClient() {
       }
       const saved = savedResponse;
       setSavedHighlights((current) => [...current, saved]);
+      setSelectedHighlightIds((current) => [...current, saved.id]);
       setActivePanel("highlights");
       setSelectedText("");
       setSelectionContext("");
@@ -660,10 +690,100 @@ export default function SideBySideClient() {
       const body: unknown = await response.json();
       if (!response.ok) throw new Error(errorFromResponse(body, "Couldn't remove this highlight."));
       setSavedHighlights((current) => current.filter((item) => item.id !== highlight.id));
+      setSelectedHighlightIds((current) => current.filter((id) => id !== highlight.id));
     } catch (cause) {
       setHighlightsError(cause instanceof Error ? cause.message : "Couldn't remove this highlight.");
     } finally {
       setDeletingHighlightId(null);
+    }
+  };
+
+  const toggleHighlightSelection = (highlightId: number) => {
+    setSelectedHighlightIds((current) =>
+      current.includes(highlightId)
+        ? current.filter((id) => id !== highlightId)
+        : [...current, highlightId]
+    );
+  };
+
+  const generateCardsFromHighlights = async () => {
+    if (!activeDocument || generatingHighlightCards || highlightsLoading) return;
+    const selectedHighlights = currentHighlights.filter((highlight) =>
+      selectedHighlightIds.includes(highlight.id)
+    );
+    if (!selectedHighlights.length) {
+      setHighlightsError("Select at least one highlight to make flashcards.");
+      return;
+    }
+
+    try {
+      if (
+        window.localStorage.getItem("quiztime:pending-deck") &&
+        !window.confirm("You already have an unsaved study-set draft. Generating these cards will replace it. Continue?")
+      ) {
+        return;
+      }
+    } catch (cause) {
+      setHighlightsError(
+        cause instanceof Error
+          ? `Couldn't check for an existing draft: ${cause.message}`
+          : "Couldn't check for an existing draft."
+      );
+      return;
+    }
+
+    setGeneratingHighlightCards(true);
+    setHighlightsError("");
+    try {
+      const source = JSON.stringify({
+        document: activeDocument.originalName,
+        highlights: selectedHighlights.map(({ quote, note }) => ({ quote, note })),
+      });
+      if (source.length > 95_000) {
+        throw new Error("The selected highlights are too long. Select fewer passages and try again.");
+      }
+
+      const formData = new FormData();
+      formData.set("source", "side-by-side-highlights");
+      formData.set("text", source);
+      const response = await fetch("/api/scan", { method: "POST", body: formData });
+      const body: unknown = await response.json();
+      if (!response.ok) {
+        throw new Error(errorFromResponse(body, "Couldn't generate flashcards from these highlights."));
+      }
+      if (
+        !body ||
+        typeof body !== "object" ||
+        !("cards" in body) ||
+        !Array.isArray(body.cards) ||
+        !body.cards.length ||
+        !body.cards.every(isGeneratedHighlightCard) ||
+        !("title" in body) ||
+        typeof body.title !== "string" ||
+        !("summary" in body) ||
+        typeof body.summary !== "string"
+      ) {
+        throw new Error("The AI returned an invalid flashcard set. Please try again.");
+      }
+
+      const handoff = {
+        cards: body.cards.map((card) => ({
+          question: card.question,
+          answer: card.answer,
+          hint: card.hint,
+          difficulty: card.difficulty,
+        })),
+        title: body.title,
+        summary: body.summary,
+        sourceType: "text",
+      };
+      window.sessionStorage.setItem(SIDE_BY_SIDE_FLASHCARD_HANDOFF_KEY, JSON.stringify(handoff));
+      window.location.assign("/");
+    } catch (cause) {
+      setHighlightsError(
+        cause instanceof Error ? cause.message : "Couldn't generate flashcards from these highlights."
+      );
+      setGeneratingHighlightCards(false);
     }
   };
 
@@ -1287,8 +1407,51 @@ export default function SideBySideClient() {
                       <p>Select a passage in the document and choose Highlight to save it here.</p>
                     </div>
                   ) : (
-                    currentHighlights.map((highlight) => (
+                    <>
+                      <div className="sbs-generate-highlights">
+                        <label className="sbs-select-all-highlights">
+                          <input
+                            type="checkbox"
+                            checked={selectedHighlightIds.length === currentHighlights.length}
+                            onChange={(event) =>
+                              setSelectedHighlightIds(
+                                event.target.checked
+                                  ? currentHighlights.map((highlight) => highlight.id)
+                                  : []
+                              )
+                            }
+                          />
+                          Select all ({currentHighlights.length})
+                        </label>
+                        <button
+                          type="button"
+                          className="sbs-generate-cards-button"
+                          disabled={
+                            generatingHighlightCards ||
+                            highlightsLoading ||
+                            selectedHighlightIds.length === 0
+                          }
+                          onClick={() => void generateCardsFromHighlights()}
+                        >
+                          {generatingHighlightCards
+                            ? <LoaderCircle className="sbs-spin" size={15} />
+                            : <Layers size={15} aria-hidden />}
+                          {generatingHighlightCards
+                            ? "Making cards…"
+                            : `Make flashcards (${selectedHighlightIds.length})`}
+                        </button>
+                      </div>
+                      {currentHighlights.map((highlight) => (
                       <article className="sbs-highlight-card" key={highlight.id}>
+                        <label className="sbs-highlight-select">
+                          <input
+                            type="checkbox"
+                            checked={selectedHighlightIds.includes(highlight.id)}
+                            onChange={() => toggleHighlightSelection(highlight.id)}
+                            aria-label={`Select highlight on page ${highlight.rects[0]?.pageNumber ?? "unknown"} for flashcards`}
+                          />
+                          <span>Select for flashcards</span>
+                        </label>
                         <button
                           type="button"
                           className="sbs-highlight-quote"
@@ -1343,7 +1506,8 @@ export default function SideBySideClient() {
                           </button>
                         </div>
                       </article>
-                    ))
+                      ))}
+                    </>
                   )}
                 </div>
               )}

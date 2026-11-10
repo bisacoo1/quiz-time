@@ -5,6 +5,7 @@ import { useSession, signIn, signOut } from "next-auth/react";
 import Link from "next/link";
 import { LoginPage } from "@/components/login-page";
 import { LandingPage } from "@/components/landing-page";
+import { SIDE_BY_SIDE_FLASHCARD_HANDOFF_KEY } from "@/lib/side-by-side";
 import { AiTutor } from "@/components/ai-tutor";
 import { OwnerPresenceBar, PresencePanel } from "@/components/owner-presence";
 import { usePresenceRoster } from "@/lib/use-presence";
@@ -7788,6 +7789,49 @@ interface PendingDeck {
 
 const DRAFT_KEY = "quiztime:pending-deck";
 
+interface HighlightDraftHandoff {
+  cards: Flashcard[];
+  title: string;
+  summary: string;
+  sourceType: string;
+}
+
+function isHighlightDraftHandoff(value: unknown): value is HighlightDraftHandoff {
+  return (
+    !!value &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    "cards" in value &&
+    Array.isArray(value.cards) &&
+    value.cards.length > 0 &&
+    value.cards.length <= 12 &&
+    value.cards.every(
+      (card) =>
+        !!card &&
+        typeof card === "object" &&
+        "question" in card &&
+        typeof card.question === "string" &&
+        card.question.trim().length > 0 &&
+        "answer" in card &&
+        typeof card.answer === "string" &&
+        card.answer.trim().length > 0 &&
+        "hint" in card &&
+        typeof card.hint === "string" &&
+        "difficulty" in card &&
+        (card.difficulty === "easy" ||
+          card.difficulty === "medium" ||
+          card.difficulty === "hard")
+    ) &&
+    "title" in value &&
+    typeof value.title === "string" &&
+    value.title.trim().length > 0 &&
+    "summary" in value &&
+    typeof value.summary === "string" &&
+    "sourceType" in value &&
+    value.sourceType === "text"
+  );
+}
+
 function loadDraft(): PendingDeck | null {
   if (typeof window === "undefined") return null; // SSR
   try {
@@ -8298,6 +8342,37 @@ export default function App() {
   const [pendingResumeExam, setPendingResumeExam] = useState<ExamResumeDraft | null>(null);
   useEffect(() => {
     const frame = requestAnimationFrame(() => {
+      try {
+        const handoffJson = window.sessionStorage.getItem(SIDE_BY_SIDE_FLASHCARD_HANDOFF_KEY);
+        if (handoffJson) {
+          window.sessionStorage.removeItem(SIDE_BY_SIDE_FLASHCARD_HANDOFF_KEY);
+          const parsed: unknown = JSON.parse(handoffJson);
+          if (isHighlightDraftHandoff(parsed)) {
+            const deck: PendingDeck = {
+              cards: parsed.cards,
+              title: parsed.title,
+              summary: parsed.summary,
+              sourceType: parsed.sourceType,
+            };
+            setPendingCards(deck.cards);
+            setPendingTitle(deck.title);
+            setPendingSummary(deck.summary);
+            setPendingSourceType(deck.sourceType);
+            setPendingReview(true);
+            setActiveSessionId(null);
+            setActiveSessionCards(null);
+            setWeakSpotPractice(false);
+            setDeckKey((key) => key + 1);
+            setDraft(deck);
+            persistDraft(deck);
+            setTab("quiz");
+            return;
+          }
+        }
+      } catch {
+        // The regular draft restore below remains available if storage is blocked.
+      }
+
       const restored = loadDraft();
       if (restored) setDraft(restored);
       const restoredExam = loadExamResumeDraft();

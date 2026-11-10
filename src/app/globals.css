@@ -3279,7 +3279,15 @@ body.maintenance-active {
 .sbs-panel-tabs button[aria-selected="true"] { border-color: #e7e4ff; background: #f7f6ff; color: #554bd2; }
 .sbs-panel-tabs button > span { display: inline-grid; min-width: 18px; height: 18px; place-items: center; padding: 0 5px; border-radius: 9px; background: #eeedf3; font-size: 10px; }
 .sbs-highlights-panel { display: flex; flex: 1 1 0; flex-direction: column; gap: 10px; min-height: 0; padding: 12px; overflow: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+.sbs-generate-highlights { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px; border: 1px solid #e8e4ff; border-radius: 12px; background: #f8f7ff; }
+.sbs-select-all-highlights, .sbs-highlight-select { display: inline-flex; align-items: center; gap: 7px; color: #5e5a70; font-size: 10px; font-weight: 650; cursor: pointer; }
+.sbs-select-all-highlights input, .sbs-highlight-select input { width: 16px; height: 16px; margin: 0; accent-color: #5b52cd; }
+.sbs-generate-cards-button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 37px; padding: 7px 10px; border: 0; border-radius: 9px; background: #554bd2; color: #fff; font: inherit; font-size: 10px; font-weight: 750; cursor: pointer; }
+.sbs-generate-cards-button:hover:not(:disabled) { background: #443abf; }
+.sbs-generate-cards-button:disabled { opacity: .5; cursor: default; }
 .sbs-highlight-card { padding: 11px; border: 1px solid #e8e5d7; border-radius: 12px; background: #fffdf5; }
+.sbs-highlight-select { margin-bottom: 8px; }
+.sbs-highlight-select > span { color: #948f9e; font-weight: 550; }
 .sbs-highlight-quote { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; width: 100%; padding: 0; border: 0; background: transparent; color: #403c31; text-align: left; cursor: pointer; }
 .sbs-highlight-quote > span { color: #8a6b1f; font-size: 10px; font-weight: 750; }
 .sbs-highlight-quote q { font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
@@ -3367,6 +3375,9 @@ body.maintenance-active {
     font-size: 13px;
   }
   .sbs-highlight-card textarea { font-size: 16px; }
+  .sbs-generate-highlights { align-items: stretch; flex-direction: column; }
+  .sbs-generate-cards-button { min-height: 44px; font-size: 12px; }
+  .sbs-select-all-highlights, .sbs-highlight-select { font-size: 12px; }
   .sbs-panel-tabs button { flex: 1; min-height: 42px; }
   .sbs-highlights-panel { max-height: 70svh; }
 }

@@ -2,6 +2,7 @@ export const SIDE_BY_SIDE_MAX_FILE_BYTES = 50 * 1024 * 1024;
 export const SIDE_BY_SIDE_STORAGE_LIMIT_BYTES = 500 * 1024 * 1024;
 export const SIDE_BY_SIDE_HIGHLIGHT_MAX_LENGTH = 5000;
 export const SIDE_BY_SIDE_HIGHLIGHT_NOTE_MAX_LENGTH = 2000;
+export const SIDE_BY_SIDE_FLASHCARD_HANDOFF_KEY = "quiztime:side-by-side-card-handoff";
 
 export interface SideBySideHighlightRect {
   pageNumber: number;
