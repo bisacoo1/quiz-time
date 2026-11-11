@@ -9,7 +9,7 @@ import { count, sql } from "drizzle-orm";
  * No authentication required. Returns:
  * - students: total number of registered users
  * - cardsCreated: total number of flashcards across all users
- * - cardsBeingStudied: total number of cards currently due for review (spaced repetition)
+ * - cardsBeingStudied: total number of cards in spaced repetition (tracked + due now)
  */
 export async function GET() {
   try {
@@ -23,16 +23,23 @@ export async function GET() {
       .select({ count: count() })
       .from(flashcards);
 
-    // Cards currently being studied (due now in spaced repetition)
+    // Cards in spaced repetition (tracked + currently due)
     const [studyingResult] = await db
-      .select({ count: count() })
-      .from(cardReviews)
-      .where(sql`${cardReviews.dueAt} <= now()`);
+      .select({
+        tracked: sql<number>`count(*)::int`,
+        dueNow: sql<number>`count(*) filter (where ${cardReviews.dueAt} <= now())::int`,
+      })
+      .from(cardReviews);
+
+    // Use total tracked cards as "being studied" - more meaningful for landing page
+    const tracked = Number(studyingResult?.tracked ?? 0);
+    const dueNow = Number(studyingResult?.dueNow ?? 0);
 
     return NextResponse.json({
       students: Number(studentsResult?.count ?? 0),
       cardsCreated: Number(cardsResult?.count ?? 0),
-      cardsBeingStudied: Number(studyingResult?.count ?? 0),
+      cardsBeingStudied: tracked, // total cards in spaced repetition system
+      cardsDueNow: dueNow, // subset that are due right now
     });
   } catch (error) {
     console.error("GET /api/public-stats error:", error);
