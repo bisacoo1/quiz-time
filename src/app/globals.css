@@ -3859,6 +3859,11 @@ body.maintenance-active {
   color: var(--landing-muted);
   font-size: 14px;
 }
+.landing-stat-skeleton {
+  width: 60px;
+  height: 36px;
+  border-radius: 8px;
+  background: linear-gradient(90deg, var(--landing-line) 25%, var(--gray-50) 50%, var(--landing-line) 75%);
   background-size: 200% 100%;
   animation: shimmer 1.4s infinite;
 }
