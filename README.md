@@ -9,6 +9,7 @@ an AI tutor and spaced repetition. It works offline as an installable PWA.
 - [Features](#features)
 - [Quick start](#quick-start)
 - [Creating decks](#creating-decks)
+- [YouTube video study](#youtube-video-study)
 - [Studying](#studying)
 - [Side by Side](#side-by-side)
 - [Organizing decks](#organizing-decks)
@@ -171,6 +172,33 @@ Every deck is editable after the fact, and decks can also be created by hand:
 
 Test coverage: `npm run test:deck-editor` (`scripts/deck-editor.test.mjs`, same
 requirements as `npm run test:e2e`).
+
+## YouTube video study
+
+Turn a public YouTube video into a study set. In the Upload tab, switch to the
+**YouTube Video** tab, paste a link, and generate. Gemini analyzes the video
+itself – its spoken content and relevant visuals – so captions aren't required.
+
+- **Public videos only.** `youtu.be`, `youtube.com/watch`, `/shorts`, `/embed`
+  and `/live` links are all accepted and normalized to a canonical
+  `https://www.youtube.com/watch?v=` URL. Private, unlisted or unavailable
+  videos are rejected.
+- **8 to 12 flashcards** come back, grounded in the video: important concepts,
+  definitions, examples and relationships. Timestamps are included only where
+  they help. As with every generated set, review the cards in the Upload tab
+  before saving.
+- **Tailor for a course** – an optional field passes a course or topic to the
+  generator so it can bias the cards toward that subject.
+- **Rate limit** – 5 video analyses per account per day
+  (`YOUTUBE_DAILY_GENERATION_LIMIT`), tracked in `youtube_generation_usage`.
+  The Upload tab shows how many are left today.
+- **Preview feature.** Video analysis is a preview Gemini capability, so the
+  UI warns that results may vary. It counts against the same sign-in
+  requirement as uploads and needs a connection.
+
+**API:** `POST /api/youtube` takes `{ url, course? }` and returns the same
+card shape as `/api/scan`, plus `remainingToday`. The failover engine
+(`src/lib/failover.ts`) and the same cooldown behaviour apply.
 
 ## Studying
 
@@ -763,8 +791,10 @@ migration file into the SQL editor and run it once:
 | `drizzle/0004_spaced_repetition.sql` | `card_reviews` table, unique index (makes the `POST /api/review` upsert atomic) and indexes |
 | `drizzle/0005_presence.sql` | `user_presence` table (the app can also create this itself) |
 | `drizzle/0008_push_notifications.sql` | Notification preference, subscription, inbox and delivery tables |
+| `drizzle/0014_youtube_video_usage.sql` | `youtube_generation_usage` table (daily video-analysis limit per account) |
 
-Deleting a deck or account cascades to its results and schedules.
+Deleting a deck or account cascades to its results and schedules. The
+`youtube_generation_usage` table is per-account and cascades on user delete.
 
 **No Postgres installed?** `scripts/dev-pglite-server.mjs` runs an embedded
 Postgres (PGlite) with a wire-protocol server:
@@ -908,6 +938,8 @@ npm run test:presence-e2e # owner-only roster e2e (needs OWNER_EMAIL, db + serve
 npm run test:deck-editor  # deck editor e2e (same requirements as test:e2e)
 npm run test:mode-switch  # quiz mode tab row: sideways drag/scroll (Playwright, mocked APIs)
 npm run test:side-by-side-generation  # flashcards generated from Side by Side highlights
+npm run test:youtube-video         # YouTube URL normalization (no db, no network)
+npm run test:youtube-route         # the /api/youtube route and daily limit (mocked endpoints)
 ```
 
 ## Notes

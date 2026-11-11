@@ -6231,12 +6231,16 @@ function SessionsPage({
     }
   };
 
-  // ── Search: filter subjects by name and unfiled sets by title
-  // (case-insensitive). Sets assigned to a subject live in that folder only.
+  // ── Search: filter subjects by name and sets by title (case-insensitive).
+  // A search surfaces matching sets no matter which folder they are filed in,
+  // so you never have to open a subject to find a set you searched for.
   const q = query.trim().toLowerCase();
   const filteredSubjects = q
     ? subjects.filter((s) => s.name.toLowerCase().includes(q))
     : subjects;
+  const matchedSets = q
+    ? sessions.filter((s) => s.title.toLowerCase().includes(q))
+    : [];
   const unfiledSessions = sessions.filter((s) => (s.subjectId ?? null) === null);
   const filteredSessions = q
     ? unfiledSessions.filter((s) => s.title.toLowerCase().includes(q))
@@ -6464,6 +6468,40 @@ function SessionsPage({
             </section>
           )}
 
+          {/* ── Matches: every set whose title matches the search, wherever it
+              lives — filed sets surface here instead of only inside their
+              folder, so a search never hides a set behind a subject. ──── */}
+          {q && matchedSets.length > 0 && (
+            <section style={{ marginBottom: 22 }}>
+              <h3 style={{ fontSize: 15, fontWeight: 800, margin: "0 0 10px", display: "flex", alignItems: "center", gap: 7, color: "var(--text)" }}>
+                <Layers size={16} aria-hidden style={{ color: "#1d4ed8" }} />
+                Matches
+                <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text-muted)" }}>
+                  {matchedSets.length} set{matchedSets.length === 1 ? "" : "s"}
+                </span>
+              </h3>
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                {matchedSets.map((session, i) => (
+                  <DeckRow
+                    key={session.id}
+                    session={session}
+                    index={i}
+                    online={online}
+                    deleting={deleting}
+                    offlineBusy={offlineBusy}
+                    offlineDecks={offlineDecks}
+                    onOpen={onOpen}
+                    onReviewDeck={onReviewDeck}
+                    onEditDeck={handleEdit}
+                    onDelete={handleDelete}
+                    onToggleOffline={onToggleOffline}
+                    onMove={openMoveSheet}
+                  />
+                ))}
+              </div>
+            </section>
+          )}
+
           {/* ── All Sets: sets that have not been filed into a subject ─── */}
           <section>
             <h3 style={{ fontSize: 15, fontWeight: 800, margin: "0 0 10px", display: "flex", alignItems: "center", gap: 7, color: "var(--text)" }}>
@@ -6497,7 +6535,7 @@ function SessionsPage({
               </div>
             ) : q ? (
               <p style={{ margin: 0, fontSize: 13, color: "var(--text-muted)" }}>
-                No sets match “{query}”.
+                No unfiled sets match “{query}”.
               </p>
             ) : (
               <p style={{ margin: 0, fontSize: 13, color: "var(--text-muted)" }}>
