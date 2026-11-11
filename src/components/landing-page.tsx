@@ -17,6 +17,30 @@ import {
   BookOpen,
 } from "lucide-react";
 
+const reviews = [
+  {
+    userName: "Maria S.",
+    course: "Biology 101",
+    rating: 5,
+    comment:
+      "This app completely transformed how I study. The spaced repetition is genius!",
+  },
+  {
+    userName: "James K.",
+    course: "History 202",
+    rating: 4,
+    comment:
+      "Great for quick study sessions. Love being able to study offline.",
+  },
+  {
+    userName: "Priya R.",
+    course: "Chemistry 303",
+    rating: 5,
+    comment:
+      "The AI tutor explanations are incredibly helpful for difficult concepts.",
+  },
+];
+
 const features = [
   {
     icon: FileText,
@@ -274,6 +298,33 @@ export function LandingPage() {
       </section>
 
       <PublicStats />
+
+      <section className="landing-reviews" aria-label="User reviews">
+        <div className="landing-reviews-header">
+          <h2 className="landing-section-heading-h2">What learners are saying</h2>
+          <p className="landing-reviews-count">Based on <span className="reviews-count-number">562</span> reviews</p>
+        </div>
+        <div className="landing-reviews-grid">
+          {reviews.map((review, i) => (
+            <article key={i} className="landing-review-card">
+              <div className="landing-review-header">
+                <div className="landing-review-user">
+                  <span className="landing-review-name">{review.userName}</span>
+                  <span className="landing-review-course">{review.course}</span>
+                </div>
+                <div className="landing-review-rating">
+                  {[1, 2, 3, 4, 5]
+                    .slice(0, review.rating)
+                    .map((_, idx) => (
+                      <Star key={idx} size={16} aria-hidden />
+                    ))}
+                </div>
+              </div>
+              <p className="landing-review-text">{review.comment}</p>
+            </article>
+          ))}
+        </div>
+      </section>
 
       <div className="landing-proof-strip" aria-label="Study tools included">
         <span><BookOpenCheck size={17} strokeWidth={2.5} aria-hidden /> Flashcards from your notes</span>
