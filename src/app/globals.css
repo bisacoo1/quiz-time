@@ -3716,13 +3716,17 @@ body.maintenance-active {
 
 /* Claymorphism stat cards */
 .landing-stat-card {
-  text-align: center;
-  padding: 24px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  text-align: left;
+  padding: 24px 28px;
   background: var(--surface);
   border: var(--landing-border-width) solid var(--border);
   border-radius: var(--radius-lg);
   box-shadow: var(--landing-shadow-inner), var(--landing-shadow-outer);
   transition: var(--landing-transition);
+  gap: 16px;
 }
 .landing-stat-card:hover {
   transform: translateY(-2px);
@@ -3733,34 +3737,53 @@ body.maintenance-active {
   box-shadow: var(--landing-shadow-press);
   transform: scale(0.99);
 }
-.landing-stat-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 56px;
-  height: 56px;
-  margin: 0 auto 12px;
-  border-radius: 14px;
-  background: var(--primary-soft);
-  color: var(--primary);
-  box-shadow: var(--landing-shadow-inner), var(--landing-shadow-outer);
+.landing-stat-left {
+  flex: 1;
 }
-.landing-stat-icon svg { width: 24px; height: 24px; }
-.landing-stat-value {
-  margin: 0 0 4px;
+.landing-stat-title {
+  margin: 0;
   font-family: var(--font-display);
-  font-size: clamp(36px, 5vw, 48px);
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--landing-ink);
+  letter-spacing: -0.02em;
+}
+.landing-stat-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  text-align: right;
+}
+.landing-stat-value {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: clamp(30px, 4vw, 40px);
   font-weight: 800;
   letter-spacing: -0.04em;
   color: var(--landing-ink);
-  line-height: 1.1;
+  line-height: 1;
 }
-.landing-stat-label { margin: 0; color: var(--landing-muted); font-size: 12px; font-weight: 600; letter-spacing: 0.02em; text-transform: uppercase; }
+.landing-stat-subtext {
+  margin-top: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--landing-muted);
+}
+.landing-stat-subtext-skeleton {
+  width: 90px;
+  height: 10px;
+  margin-top: 6px;
+  border-radius: 4px;
+  background: linear-gradient(90deg, var(--landing-line) 25%, var(--gray-50) 50%, var(--landing-line) 75%);
+  background-size: 200% 100%;
+  animation: landing-skeleton 1.5s infinite;
+}
 .landing-stat-skeleton {
   width: 60px;
-  height: 60px;
-  margin: 0 auto 12px;
-  border-radius: 14px;
+  height: 36px;
+  border-radius: 8px;
   background: linear-gradient(90deg, var(--landing-line) 25%, var(--gray-50) 50%, var(--landing-line) 75%);
   background-size: 200% 100%;
   animation: shimmer 1.4s infinite;

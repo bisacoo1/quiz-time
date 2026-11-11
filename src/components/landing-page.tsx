@@ -48,6 +48,42 @@ const features = [
   },
 ];
 
+function AnimatedNumber({ value }: { value: number }) {
+  const [current, setCurrent] = useState(0);
+
+  useEffect(() => {
+    let animationFrameId: number;
+    const startValue = 0;
+    const duration = 1200;
+    const startTime = performance.now();
+
+    const updateCounter = (now: number) => {
+      const elapsed = now - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      const easedProgress = 1 - Math.pow(1 - progress, 3);
+      const val = Math.floor(startValue + (value - startValue) * easedProgress);
+      setCurrent(val);
+
+      if (progress < 1) {
+        animationFrameId = requestAnimationFrame(updateCounter);
+      } else {
+        setCurrent(value);
+      }
+    };
+
+    animationFrameId = requestAnimationFrame(updateCounter);
+    return () => cancelAnimationFrame(animationFrameId);
+  }, [value]);
+
+  const formatNumber = (num: number) => {
+    if (num >= 1000000) return (num / 1000000).toFixed(1) + "M";
+    if (num >= 1000) return (num / 1000).toFixed(1) + "K";
+    return num.toLocaleString();
+  };
+
+  return <>{formatNumber(current)}</>;
+}
+
 function PublicStats() {
   const [stats, setStats] = useState<{
     students: number;
@@ -73,14 +109,37 @@ function PublicStats() {
     fetchStats();
   }, []);
 
+  const items = [
+    {
+      label: "Real Students",
+      value: stats?.students ?? 0,
+      subtext: "STUDYING ON QUIZTIME",
+    },
+    {
+      label: "Real Numbers",
+      value: stats?.cardsCreated ?? 0,
+      subtext: "CARDS CREATED",
+    },
+    {
+      label: "Right Now",
+      value: stats?.cardsBeingStudied ?? 0,
+      subtext: "CARDS STUDIED",
+    },
+  ];
+
   if (isLoading) {
     return (
       <section className="landing-stats" aria-label="QuizTime statistics">
         <div className="landing-stats-grid">
-          {["Students", "Cards Created", "Cards Being Studied"].map((label, i) => (
+          {items.map((item, i) => (
             <div key={i} className="landing-stat-card">
-              <div className="landing-stat-skeleton" />
-              <p className="landing-stat-label-skeleton" />
+              <div className="landing-stat-left">
+                <span className="landing-stat-title">{item.label}</span>
+              </div>
+              <div className="landing-stat-right">
+                <div className="landing-stat-skeleton" />
+                <div className="landing-stat-subtext-skeleton" />
+              </div>
             </div>
           ))}
         </div>
@@ -90,27 +149,22 @@ function PublicStats() {
 
   if (!stats) return null;
 
-  const formatNumber = (num: number) => {
-    if (num >= 1000000) return (num / 1000000).toFixed(1) + "M";
-    if (num >= 1000) return (num / 1000).toFixed(1) + "K";
-    return num.toString();
-  };
-
   return (
     <section className="landing-stats" aria-label="QuizTime statistics">
       <div className="landing-stats-grid">
-        <article className="landing-stat-card">
-          <p className="landing-stat-value">{formatNumber(stats.students)}</p>
-          <p className="landing-stat-label">Real Students</p>
-        </article>
-        <article className="landing-stat-card">
-          <p className="landing-stat-value">{formatNumber(stats.cardsCreated)}</p>
-          <p className="landing-stat-label">Cards Created</p>
-        </article>
-        <article className="landing-stat-card">
-          <p className="landing-stat-value">{formatNumber(stats.cardsBeingStudied)}</p>
-          <p className="landing-stat-label">Right Now</p>
-        </article>
+        {items.map((item, i) => (
+          <article key={i} className="landing-stat-card">
+            <div className="landing-stat-left">
+              <h3 className="landing-stat-title">{item.label}</h3>
+            </div>
+            <div className="landing-stat-right">
+              <p className="landing-stat-value">
+                <AnimatedNumber value={item.value} />
+              </p>
+              <span className="landing-stat-subtext">{item.subtext}</span>
+            </div>
+          </article>
+        ))}
       </div>
     </section>
   );
