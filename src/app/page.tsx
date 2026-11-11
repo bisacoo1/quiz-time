@@ -559,6 +559,8 @@ function SourceTypeIcon({ type, size }: { type: string; size: number }) {
       ? PenLine
       : type === "pptx"
       ? Presentation
+      : type === "youtube"
+      ? Play
       : type === "mixed"
       ? Files
       : type === "manual"
@@ -1037,7 +1039,13 @@ function UploadPage({
 }: {
   /** The profile course, used to pre-fill the per-upload "tailor for" field. */
   course: string | null;
-  onCardsReady: (cards: Flashcard[], title: string, summary: string, sourceType: string) => void;
+  onCardsReady: (
+    cards: Flashcard[],
+    title: string,
+    summary: string,
+    sourceType: string,
+    sourceText?: string
+  ) => void;
 }) {
   const [dragOver, setDragOver] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -1049,7 +1057,8 @@ function UploadPage({
     detail?: string;
   } | null>(null);
   const [textInput, setTextInput] = useState("");
-  const [mode, setMode] = useState<"file" | "text">("file");
+  const [youtubeUrl, setYoutubeUrl] = useState("");
+  const [mode, setMode] = useState<"file" | "text" | "youtube">("file");
   const [picked, setPicked] = useState<PickedFile[]>([]);
   // Per-upload override: pre-filled from the profile, editable for this one
   // set, and cleared (→ generic AI prompt) if the user empties it.
@@ -1234,7 +1243,45 @@ function UploadPage({
 
       let sourceType = "text";
 
-      if (mode === "file") {
+      if (mode === "youtube") {
+        if (!youtubeUrl.trim()) {
+          setError("Paste a public YouTube video link to continue.");
+          return;
+        }
+
+        setStatusText("Analyzing the video");
+        setUploadProgress({ stage: "processing", percent: null });
+        const response = await fetch("/api/youtube", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url: youtubeUrl.trim(), course: tailorFor.trim() }),
+        });
+        const result = (await response.json().catch(() => null)) as (ScanResponse & {
+          sourceUrl?: string;
+          remainingToday?: number;
+        }) | null;
+        if (!response.ok || !result || result.error) {
+          throw new Error(result?.error || `Video analysis failed (HTTP ${response.status}).`);
+        }
+        if (!result.cards?.length) {
+          throw new Error("No flashcards were generated from this video.");
+        }
+
+        sourceType = "youtube";
+        setUploadProgress({ stage: "creating", percent: null });
+        onCardsReady(
+          result.cards,
+          result.title || "YouTube Study Set",
+          result.summary || "",
+          sourceType,
+          result.sourceUrl || youtubeUrl.trim()
+        );
+        mascotSay("Your video study set is ready — review the cards before saving!", "wave");
+        showToast(
+          `Generated ${result.cards.length} flashcards · ${result.remainingToday ?? 0} video generations left today`,
+          PartyPopper
+        );
+      } else if (mode === "file") {
         if (picked.length === 0) {
           setError("Please add at least one PDF, photo, Word or PowerPoint file");
           setLoading(false);
@@ -1557,7 +1604,7 @@ function UploadPage({
         </span>
       </h2>
       <p style={{ color: "var(--text-muted)", margin: "0 0 20px", fontSize: 14 }}>
-        Upload PDFs, Word docs, PowerPoints or photos — large files are automatically split and uploaded in parts — or paste text!
+        Upload study materials, paste text, or analyze a public YouTube video.
       </p>
 
       {/* Tailor-for field: pre-filled from the profile course, editable for
@@ -1609,6 +1656,7 @@ function UploadPage({
         {[
           { id: "file" as const, label: "Files / Photos", Icon: FileText },
           { id: "text" as const, label: "Paste Text", Icon: Keyboard },
+          { id: "youtube" as const, label: "YouTube Video", Icon: Play },
         ].map((m) => (
           <button
             key={m.id}
@@ -1791,7 +1839,7 @@ function UploadPage({
             </button>
           </div>
         </>
-      ) : (
+      ) : mode === "text" ? (
         <div style={{ marginBottom: 16 }}>
           <textarea
             className="clay-textarea upload-textarea"
@@ -1821,6 +1869,57 @@ function UploadPage({
             {textInput.length} characters
           </p>
         </div>
+      ) : (
+        <div style={{ marginBottom: 16 }}>
+          <label
+            htmlFor="youtube-video-url"
+            style={{
+              display: "block",
+              marginBottom: 7,
+              fontSize: 13,
+              fontWeight: 750,
+              color: "var(--text)",
+            }}
+          >
+            Public YouTube video link
+          </label>
+          <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+            <Play
+              size={18}
+              aria-hidden
+              style={{ position: "absolute", left: 13, color: "#dc2626" }}
+            />
+            <input
+              id="youtube-video-url"
+              type="url"
+              value={youtubeUrl}
+              onChange={(event) => {
+                setYoutubeUrl(event.target.value);
+                setError("");
+              }}
+              placeholder="https://www.youtube.com/watch?v=..."
+              autoComplete="url"
+              spellCheck={false}
+              style={{
+                width: "100%",
+                minHeight: 48,
+                padding: "12px 14px 12px 42px",
+                border: "1.5px solid var(--border-color)",
+                borderRadius: 12,
+                background: "white",
+                color: "var(--text)",
+                font: "inherit",
+                fontSize: 14,
+                outline: "none",
+              }}
+            />
+          </div>
+          <p style={{ margin: "8px 0 0", color: "var(--text-muted)", fontSize: 12, lineHeight: 1.5 }}>
+            Gemini analyzes the video itself, so captions aren’t required. Public videos only;
+            up to 5 video analyses per account each day. This Gemini feature is in preview, so
+            availability and service limits may change.
+          </p>
+        </div>
       )}
 
       {error && (
@@ -1848,12 +1947,16 @@ function UploadPage({
               ? statusText
               : mode === "file" && picked.length > 1
               ? `Reading ${picked.length} files...`
+              : mode === "youtube"
+              ? "Analyzing YouTube video..."
               : "Generating Flashcards..."}
           </>
         ) : (
           <>
             <Sparkles />
-            {mode === "file" && picked.length > 1
+            {mode === "youtube"
+              ? "Analyze Video & Make Flashcards"
+              : mode === "file" && picked.length > 1
               ? `Generate from ${picked.length} files`
               : "Generate Flashcards with AI"}
           </>
@@ -7785,6 +7888,7 @@ interface PendingDeck {
   title: string;
   summary: string;
   sourceType: string;
+  sourceText?: string;
 }
 
 const DRAFT_KEY = "quiztime:pending-deck";
@@ -8021,6 +8125,7 @@ export default function App() {
   const [pendingTitle, setPendingTitle] = useState("");
   const [pendingSummary, setPendingSummary] = useState("");
   const [pendingSourceType, setPendingSourceType] = useState("text");
+  const [pendingSourceText, setPendingSourceText] = useState("");
   const [activeSessionId, setActiveSessionId] = useState<number | null>(null);
   const [activeSessionCards, setActiveSessionCards] = useState<Flashcard[] | null>(null);
   const [activeSessionTitle, setActiveSessionTitle] = useState("");
@@ -8358,6 +8463,7 @@ export default function App() {
             setPendingTitle(deck.title);
             setPendingSummary(deck.summary);
             setPendingSourceType(deck.sourceType);
+            setPendingSourceText(deck.sourceText ?? "");
             setPendingReview(true);
             setActiveSessionId(null);
             setActiveSessionCards(null);
@@ -8411,20 +8517,27 @@ export default function App() {
     setTab("quiz");
   };
 
-  const handleCardsReady = (cards: Flashcard[], title: string, summary: string, sourceType: string) => {
+  const handleCardsReady = (
+    cards: Flashcard[],
+    title: string,
+    summary: string,
+    sourceType: string,
+    sourceText = ""
+  ) => {
     setPendingResumeExam(null);
     setPendingCards(cards);
     setPendingReview(false);
     setPendingTitle(title);
     setPendingSummary(summary);
     setPendingSourceType(sourceType);
+    setPendingSourceText(sourceText);
     setActiveSessionId(null);
     setWeakSpotPractice(false);
     setDeckKey((k) => k + 1);
     setTab("quiz");
 
     // Keep the deck safe if the user leaves before tapping Save.
-    const deck: PendingDeck = { cards, title, summary, sourceType };
+    const deck: PendingDeck = { cards, title, summary, sourceType, sourceText };
     setDraft(deck);
     persistDraft(deck);
   };
@@ -8435,7 +8548,13 @@ export default function App() {
     setPendingSummary(summary);
     setPendingReview(false);
     setDeckKey((key) => key + 1);
-    const deck: PendingDeck = { cards, title, summary, sourceType: pendingSourceType };
+    const deck: PendingDeck = {
+      cards,
+      title,
+      summary,
+      sourceType: pendingSourceType,
+      sourceText: pendingSourceText,
+    };
     setDraft(deck);
     persistDraft(deck);
   };
@@ -8452,6 +8571,7 @@ export default function App() {
     setPendingTitle(draft.title);
     setPendingSummary(draft.summary);
     setPendingSourceType(draft.sourceType);
+    setPendingSourceText(draft.sourceText ?? "");
     setActiveSessionId(null);
     setDeckKey((k) => k + 1);
     setTab("quiz");
@@ -8481,6 +8601,7 @@ export default function App() {
       body: JSON.stringify({
         title,
         sourceType: pendingSourceType,
+        sourceText: pendingSourceText || null,
         summary: summaryToSave,
         cards: cardsToSave,
       }),
