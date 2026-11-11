@@ -5580,6 +5580,7 @@ function DeckRow({
   onDelete,
   onToggleOffline,
   onMove,
+  subjectName,
 }: {
   session: StudySession;
   index: number;
@@ -5595,6 +5596,8 @@ function DeckRow({
   onToggleOffline: (id: number, saved: boolean) => void;
   /** Open the "Move to subject" sheet — the little folder button. */
   onMove: (session: StudySession) => void;
+  /** Optional subject folder name to show in search results (Matches section). */
+  subjectName?: string;
 }) {
   return (
     <div
@@ -5635,6 +5638,12 @@ function DeckRow({
         <p style={{ margin: "0 0 3px", fontWeight: 700, fontSize: 15, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {session.title}
         </p>
+        {subjectName && (
+          <p style={{ margin: "0 0 3px", fontSize: 12, color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 4 }}>
+            <Folder size={12} aria-hidden style={{ flexShrink: 0 }} />
+            <span style={{ fontWeight: 600 }}>{subjectName}</span>
+          </p>
+        )}
         <p style={{ margin: 0, fontSize: 13, color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
           <span>
             {session.cardCount} card{session.cardCount === 1 ? "" : "s"} · {formatRelativeDate(session.createdAt)}
@@ -6234,17 +6243,33 @@ function SessionsPage({
   // ── Search: filter subjects by name and sets by title (case-insensitive).
   // A search surfaces matching sets no matter which folder they are filed in,
   // so you never have to open a subject to find a set you searched for.
+  // Memoized to avoid re-filtering on every keystroke with large libraries.
   const q = query.trim().toLowerCase();
-  const filteredSubjects = q
-    ? subjects.filter((s) => s.name.toLowerCase().includes(q))
-    : subjects;
-  const matchedSets = q
-    ? sessions.filter((s) => s.title.toLowerCase().includes(q))
-    : [];
-  const unfiledSessions = sessions.filter((s) => (s.subjectId ?? null) === null);
-  const filteredSessions = q
-    ? unfiledSessions.filter((s) => s.title.toLowerCase().includes(q))
-    : unfiledSessions;
+  const filteredSubjects = useMemo(
+    () => (q ? subjects.filter((s) => s.name.toLowerCase().includes(q)) : subjects),
+    [q, subjects]
+  );
+  const matchedSets = useMemo(
+    () => (q ? sessions.filter((s) => s.title.toLowerCase().includes(q)) : []),
+    [q, sessions]
+  );
+  // Subject lookup for the Matches section (shows which folder a filed set lives in).
+  const subjectById = useMemo(
+    () => new Map(subjects.map((s) => [s.id, s.name])),
+    [subjects]
+  );
+  const unfiledSessions = useMemo(
+    () => sessions.filter((s) => (s.subjectId ?? null) === null),
+    [sessions]
+  );
+  const matchedUnfiledIds = useMemo(
+    () => new Set(q ? unfiledSessions.filter((s) => s.title.toLowerCase().includes(q)).map((s) => s.id) : []),
+    [q, unfiledSessions]
+  );
+  const filteredSessions = useMemo(
+    () => unfiledSessions.filter((s) => !matchedUnfiledIds.has(s.id)),
+    [unfiledSessions, matchedUnfiledIds]
+  );
 
   /** "Move to subject" sheet opener — passed down to every deck row. */
   const openMoveSheet = (session: StudySession) => {
@@ -6496,6 +6521,7 @@ function SessionsPage({
                     onDelete={handleDelete}
                     onToggleOffline={onToggleOffline}
                     onMove={openMoveSheet}
+                    subjectName={session.subjectId ? subjectById.get(session.subjectId) : undefined}
                   />
                 ))}
               </div>
@@ -6535,7 +6561,8 @@ function SessionsPage({
               </div>
             ) : q ? (
               <p style={{ margin: 0, fontSize: 13, color: "var(--text-muted)" }}>
-                No unfiled sets match “{query}”.
+                No unfiled sets match “{query}”. Filed matches appear in
+                <strong> Matches</strong> above.
               </p>
             ) : (
               <p style={{ margin: 0, fontSize: 13, color: "var(--text-muted)" }}>
@@ -6553,7 +6580,10 @@ function SessionsPage({
           online={online}
           onClose={() => setMoveSheet(null)}
           onMoved={(subjectId) => {
-            const previousSubjectId = moveSheet.subjectId ?? null;
+            // Read the CURRENT subjectId from state to avoid stale closure bugs
+            // if a background sync updated the session since the sheet opened.
+            const currentSession = sessions.find((s) => s.id === moveSheet.id);
+            const previousSubjectId = currentSession?.subjectId ?? null;
             void syncDeckSubjects(new Map([[moveSheet.id, subjectId]]));
             setSessions((prev) => prev.map((session) =>
               session.id === moveSheet.id ? { ...session, subjectId } : session
