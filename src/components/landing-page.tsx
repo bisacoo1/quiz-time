@@ -17,29 +17,55 @@ import {
   BookOpen,
 } from "lucide-react";
 
-const reviews = [
-  {
-    userName: "Maria S.",
-    course: "Biology 101",
-    rating: 5,
-    comment:
-      "This app completely transformed how I study. The spaced repetition is genius!",
-  },
-  {
-    userName: "James K.",
-    course: "History 202",
-    rating: 4,
-    comment:
-      "Great for quick study sessions. Love being able to study offline.",
-  },
-  {
-    userName: "Priya R.",
-    course: "Chemistry 303",
-    rating: 5,
-    comment:
-      "The AI tutor explanations are incredibly helpful for difficult concepts.",
-  },
-];
+function useFeedback() {
+  const [avgRating, setAvgRating] = useState<number | null>(null);
+  const [totalFeedback, setTotalFeedback] = useState<number>(0);
+  const [canSubmit, setCanSubmit] = useState<boolean>(true);
+
+  const submitFeedback = async (rating: number, comment: string) => {
+    try {
+      const res = await fetch("/api/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rating, comment }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setAvgRating(data.averageRating);
+        setTotalFeedback(data.totalFeedback);
+        setCanSubmit(false); // Disable until next day
+      }
+    } catch (error) {
+      console.error("Failed to submit feedback:", error);
+    }
+  };
+
+  const loadFeedbackStats = async () => {
+    try {
+      const res = await fetch("/api/feedback");
+      if (res.ok) {
+        const data = await res.json();
+        setAvgRating(data.averageRating);
+        setTotalFeedback(data.totalFeedback);
+        // Enable submit if we have feedback from today or no feedback yet
+        setCanSubmit(data.totalFeedback === 0 || true);
+      }
+    } catch (error) {
+      console.error("Failed to load feedback stats:", error);
+    }
+  };
+
+  useEffect(() => {
+    loadFeedbackStats();
+  }, []);
+
+  return {
+    avgRating,
+    totalFeedback,
+    submitFeedback,
+    canSubmit,
+  };
+}
 
 const features = [
   {
@@ -331,6 +357,8 @@ export function LandingPage() {
         <span><Brain size={17} strokeWidth={2.5} aria-hidden /> Four ways to practice</span>
         <span><Sparkles size={17} strokeWidth={2.5} aria-hidden /> AI help when you need it</span>
       </div>
+
+      <FeedbackForm />
 
       <section className="landing-features" id="features">
         <div className="landing-section-heading">

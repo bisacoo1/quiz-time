@@ -3881,6 +3881,87 @@ body.maintenance-active {
 .landing-section-heading { max-width: 650px; margin: 0 auto 34px; text-align: center; }
 .landing-section-heading .landing-eyebrow { justify-content: center; }
 .landing-section-heading h2, .landing-how h2 {
+}
+
+/* ── Feedback Form ────────────────────────────────────────────────────────── */
+.landing-feedback {
+  padding: 48px clamp(20px, 6vw, 88px);
+  background: var(--gray-50);
+}
+.landing-feedback-container {
+  max-width: 600px;
+  margin: 0 auto;
+}
+.landing-feedback-container h2 {
+  text-align: center;
+  margin-bottom: 8px;
+  font-size: 34px;
+}
+.landing-feedback-container p {
+  text-align: center;
+  color: var(--landing-muted);
+  margin-bottom: 32px;
+  font-size: 14px;
+}
+.landing-rating-selector {
+  text-align: center;
+  margin: 24px 0;
+}
+.landing-rating-label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 14px;
+  color: var(--landing-ink);
+}
+.landing-stars {
+  display: inline-flex;
+  gap: 4px;
+}
+.landing-star-btn {
+  background: none;
+  border: none;
+  padding: 4px 8px;
+  color: var(--landing-muted);
+  font-size: 24px;
+  cursor: pointer;
+  transition: color 0.2s;
+}
+.landing-star-btn.active,
+.landing-star-btn:hover {
+  color: var(--primary);
+}
+.landing-textarea {
+  width: 100%;
+  padding: 12px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  color: var(--landing-ink);
+  font-size: 14px;
+  resize: vertical;
+  min-height: 80px;
+  margin-bottom: 24px;
+  transition: border-color 0.2s;
+}
+.landing-textarea:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+.landing-button-primary:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+.landing-feedback-result {
+  text-align: center;
+  margin-top: 24px;
+  color: var(--landing-ink);
+  font-size: 14px;
+}
+.landing-avg-rating {
+  color: var(--primary);
+  font-size: 18px;
+  font-weight: 700;
+}
   margin: 0;
   color: var(--landing-ink);
   font-family: var(--font-display);

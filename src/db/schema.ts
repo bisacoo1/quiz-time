@@ -362,6 +362,33 @@ export const studyResults = pgTable(
   ]
 );
 
+/**
+ * User feedback — collected from the app to help improve QuizTime.
+ *
+ * Users can submit a rating (1-5) and optional comment.
+ * Each user can submit once per day (deduped by localDate).
+ */
+export const userFeedback = pgTable(
+  "user_feedback",
+  {
+    id: serial("id").primaryKey(),
+    /** Who submitted the feedback. */
+    userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    /** Rating from 1 to 5 stars. */
+    rating: integer("rating").notNull().default(5),
+    /** Optional written feedback comment. */
+    comment: text("comment").notNull().default(""),
+    /** The local date when this was submitted (for dedup). */
+    localDate: text("local_date").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    // One feedback per user per day max.
+    uniqueIndex("user_feedback_user_day_key").on(table.userId, table.localDate),
+    index("user_feedback_user_id_idx").on(table.userId),
+  ]
+);
+
 export type User = typeof users.$inferSelect;
 export type Subject = typeof subjects.$inferSelect;
 export type SavedDocument = typeof savedDocuments.$inferSelect;
