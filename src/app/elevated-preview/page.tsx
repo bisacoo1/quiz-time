@@ -1,5 +1,7 @@
 "use client";
 
+import Image from "next/image";
+import Link from "next/link";
 import {
   Heart,
   Sparkles,
@@ -55,7 +57,7 @@ export default function ElevatedPreview() {
             <div>
               <p className="text-[11px] font-bold text-red-500/70 uppercase tracking-wide mb-2">Before · attribution in header</p>
               <div className="rounded-[22px] bg-white border-[3px] border-white shadow-[0_10px_26px_rgba(43,80,180,0.16)] px-4 py-3 flex items-center gap-3">
-                <img src="/images/logo.png" alt="" className="w-9 h-9 rounded-[10px] object-cover" />
+                <Image src="/images/logo.png" alt="" width={36} height={36} className="w-9 h-9 rounded-[10px] object-cover" />
                 <div>
                   <p className="m-0 text-[15px] font-black">QuizTime</p>
                   <p className="m-0 text-[11px] text-[#5b7192]">Your AI Study Partner</p>
@@ -68,7 +70,7 @@ export default function ElevatedPreview() {
             <div>
               <p className="text-[11px] font-bold text-emerald-600 uppercase tracking-wide mb-2">After · clean header, credit in footer</p>
               <div className="rounded-[22px] bg-white/90 backdrop-blur-[14px] border border-white shadow-[0_8px_20px_rgba(0,0,0,0.06)] px-4 py-3 flex items-center gap-3">
-                <img src="/images/logo.png" alt="" className="w-9 h-9 rounded-[10px] object-cover" />
+                <Image src="/images/logo.png" alt="" width={36} height={36} className="w-9 h-9 rounded-[10px] object-cover" />
                 <div>
                   <p className="m-0 text-[15px] font-black tracking-tight">QuizTime</p>
                   <p className="m-0 text-[11px] text-[#1e1b4b]/50 font-semibold">Your AI Study Partner</p>
@@ -105,7 +107,7 @@ export default function ElevatedPreview() {
                 <div className="absolute -top-5 -right-5 w-[120px] h-[120px] bg-white/10 rounded-full" />
                 <Heart size={48} strokeWidth={1.5} className="mb-3 animate-pulse" />
                 <h3 className="m-0 text-[22px] font-black">QuizTime</h3>
-                <p className="m-0 mt-1 text-[13px] opacity-90 leading-[1.5]">Upload your study material and I'll turn it into fun flashcards...</p>
+                <p className="m-0 mt-1 text-[13px] opacity-90 leading-[1.5]">Upload your study material and I&apos;ll turn it into fun flashcards...</p>
                 <button className="mt-5 inline-flex items-center gap-2 px-5 py-3 rounded-[18px] bg-white text-[#1d4ed8] font-extrabold text-[14px] shadow-[inset_0_2px_3px_rgba(255,255,255,1),inset_0_-4px_8px_rgba(43,80,180,0.12),0_5px_0_#1e3a8a,0_12px_24px_rgba(0,0,0,0.25)]">
                   <Sparkles size={18} /> Start Studying
                 </button>
@@ -305,7 +307,7 @@ export default function ElevatedPreview() {
           <div className="rounded-[28px] overflow-hidden bg-[#fafafb] border border-black/[0.06] shadow-[0_20px_60px_rgba(30,27,75,0.12)]">
             {/* Mock header */}
             <div className="px-4 py-3 flex items-center gap-3 bg-white border-b border-black/[0.04]">
-              <img src="/images/logo.png" alt="" className="w-8 h-8 rounded-[9px] object-cover" />
+              <Image src="/images/logo.png" alt="" width={32} height={32} className="w-8 h-8 rounded-[9px] object-cover" />
               <div>
                 <p className="m-0 text-[14px] font-black tracking-tight">QuizTime</p>
                 <p className="m-0 text-[10px] text-[#1e1b4b]/50 font-semibold">Your AI Study Partner</p>
@@ -382,9 +384,9 @@ export default function ElevatedPreview() {
             <p className="m-0"><span className="text-white font-bold">5. Footer:</span> New low-contrast footer: text-[#1e1b4b]/30, centered, 10px</p>
           </div>
           <div className="mt-4 flex gap-2">
-            <a href="/" className="inline-flex items-center gap-2 px-4 py-2.5 rounded-[12px] bg-white text-[#1e1b4b] font-bold text-[12px] no-underline shadow-[inset_0_1px_2px_rgba(255,255,255,0.4)]">
+            <Link href="/" className="inline-flex items-center gap-2 px-4 py-2.5 rounded-[12px] bg-white text-[#1e1b4b] font-bold text-[12px] no-underline shadow-[inset_0_1px_2px_rgba(255,255,255,0.4)]">
               Back to App <ArrowRight size={14} strokeWidth={2.5} />
-            </a>
+            </Link>
             <span className="inline-flex items-center px-3 py-2 rounded-[12px] bg-white/10 text-white/60 font-bold text-[11px] border border-white/10">
               Preview only · production unchanged
             </span>

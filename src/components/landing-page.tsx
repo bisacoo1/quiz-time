@@ -1,5 +1,8 @@
+"use client";
+
 import Image from "next/image";
 import Link from "next/link";
+import { useState, useEffect } from "react";
 import {
   ArrowDown,
   ArrowRight,
@@ -8,6 +11,9 @@ import {
   FileText,
   Sparkles,
   Target,
+  Users,
+  Library,
+  BookOpen,
 } from "lucide-react";
 
 const features = [
@@ -40,6 +46,83 @@ const features = [
     tone: "blue",
   },
 ];
+
+function PublicStats() {
+  const [stats, setStats] = useState<{
+    students: number;
+    cardsCreated: number;
+    cardsBeingStudied: number;
+  } | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchStats() {
+      try {
+        const res = await fetch("/api/public-stats", { cache: "no-store" });
+        if (res.ok) {
+          const data = await res.json();
+          setStats(data);
+        }
+      } catch (error) {
+        console.error("Failed to fetch public stats:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    fetchStats();
+  }, []);
+
+  if (isLoading) {
+    return (
+      <section className="landing-stats" aria-label="QuizTime statistics">
+        <div className="landing-stats-grid">
+          {["Students", "Cards Created", "Cards Being Studied"].map((label, i) => (
+            <div key={i} className="landing-stat-card">
+              <div className="landing-stat-skeleton" />
+              <p className="landing-stat-label-skeleton" />
+            </div>
+          ))}
+        </div>
+      </section>
+    );
+  }
+
+  if (!stats) return null;
+
+  const formatNumber = (num: number) => {
+    if (num >= 1000000) return (num / 1000000).toFixed(1) + "M";
+    if (num >= 1000) return (num / 1000).toFixed(1) + "K";
+    return num.toString();
+  };
+
+  return (
+    <section className="landing-stats" aria-label="QuizTime statistics">
+      <div className="landing-stats-grid">
+        <article className="landing-stat-card">
+          <div className="landing-stat-icon">
+            <Users size={24} strokeWidth={2.5} aria-hidden />
+          </div>
+          <p className="landing-stat-value">{formatNumber(stats.students)}</p>
+          <p className="landing-stat-label">{stats.students === 1 ? "Student" : "Students"}</p>
+        </article>
+        <article className="landing-stat-card">
+          <div className="landing-stat-icon">
+            <Library size={24} strokeWidth={2.5} aria-hidden />
+          </div>
+          <p className="landing-stat-value">{formatNumber(stats.cardsCreated)}</p>
+          <p className="landing-stat-label">Cards Created</p>
+        </article>
+        <article className="landing-stat-card">
+          <div className="landing-stat-icon">
+            <BookOpen size={24} strokeWidth={2.5} aria-hidden />
+          </div>
+          <p className="landing-stat-value">{formatNumber(stats.cardsBeingStudied)}</p>
+          <p className="landing-stat-label">Cards Being Studied</p>
+        </article>
+      </div>
+    </section>
+  );
+}
 
 export function LandingPage() {
   return (
@@ -114,6 +197,8 @@ export function LandingPage() {
           <img className="landing-mascot" src="/hamster/hamster-wave.png" alt="" />
         </div>
       </section>
+
+      <PublicStats />
 
       <div className="landing-proof-strip" aria-label="Study tools included">
         <span><BookOpenCheck size={17} strokeWidth={2.5} aria-hidden /> Flashcards from your notes</span>

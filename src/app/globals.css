@@ -3502,6 +3502,19 @@ body.maintenance-active {
 .landing-proof-strip { display: flex; align-items: center; justify-content: center; gap: clamp(20px, 5vw, 64px); padding: 21px 16px; border-top: 1px solid var(--landing-line); border-bottom: 1px solid var(--landing-line); color: #625e76; }
 .landing-proof-strip span { display: inline-flex; align-items: center; gap: 9px; font-size: 11px; font-weight: 650; }
 .landing-proof-strip svg { color: #796dde; width: 17px; height: 17px; stroke-width: 2.5; }
+
+/* ── Public Stats Section ────────────────────────────────────────────────────────── */
+.landing-stats { margin: 0 -24px; padding: 32px 24px; background: linear-gradient(135deg, rgba(255,255,255,0.8) 0%, rgba(248,246,255,0.8) 100%); border-top: 1px solid var(--landing-line); border-bottom: 1px solid var(--landing-line); }
+.landing-stats-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; max-width: 1000px; margin: 0 auto; }
+.landing-stat-card { text-align: center; padding: 24px 16px; background: rgba(255,255,255,0.7); border: 1px solid var(--landing-line); border-radius: 16px; transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease; }
+.landing-stat-card:hover { transform: translateY(-2px); box-shadow: 0 12px 32px rgba(55,47,82,0.08); border-color: #d8d4e5; }
+.landing-stat-icon { display: inline-flex; align-items: center; justify-content: center; width: 56px; height: 56px; margin: 0 auto 12px; border-radius: 14px; background: var(--primary-soft); color: var(--primary); }
+.landing-stat-icon svg { width: 24px; height: 24px; }
+.landing-stat-value { margin: 0 0 4px; font-family: var(--font-display); font-size: clamp(36px, 5vw, 48px); font-weight: 800; letter-spacing: -0.04em; color: var(--landing-ink); line-height: 1.1; }
+.landing-stat-label { margin: 0; color: var(--landing-muted); font-size: 12px; font-weight: 600; letter-spacing: 0.02em; text-transform: uppercase; }
+.landing-stat-skeleton { width: 60px; height: 60px; margin: 0 auto 12px; border-radius: 14px; background: linear-gradient(90deg, var(--landing-line) 25%, rgba(248,246,255,0.8) 50%, var(--landing-line) 75%); background-size: 200% 100%; animation: shimmer 1.4s infinite; }
+.landing-stat-label-skeleton { width: 80px; height: 14px; margin: 0 auto; border-radius: 8px; background: linear-gradient(90deg, var(--landing-line) 25%, rgba(248,246,255,0.8) 50%, var(--landing-line) 75%); background-size: 200% 100%; animation: shimmer 1.4s infinite; }
+
 .landing-features { padding: 94px 0 86px; }
 .landing-section-heading { max-width: 650px; margin: 0 auto 34px; text-align: center; }
 .landing-section-heading .landing-eyebrow { justify-content: center; }
@@ -3653,6 +3666,13 @@ body.maintenance-active {
   .landing-proof-strip { justify-content: flex-start; gap: 11px 18px; flex-wrap: wrap; padding: 16px 2px; }
   .landing-proof-strip span { gap: 6px; font-size: 9px; }
   .landing-proof-strip svg { width: 14px; height: 14px; }
+  .landing-stats { margin: 0 -20px; padding: 24px 20px; }
+  .landing-stats-grid { gap: 12px; }
+  .landing-stat-card { padding: 20px 12px; }
+  .landing-stat-icon { width: 48px; height: 48px; margin-bottom: 10px; }
+  .landing-stat-icon svg { width: 20px; height: 20px; }
+  .landing-stat-value { font-size: clamp(30px, 6vw, 40px); }
+  .landing-stat-label { font-size: 11px; }
   .landing-features { padding: 68px 0 56px; }
   .landing-section-heading { margin-bottom: 24px; text-align: left; }
   .landing-section-heading .landing-eyebrow { justify-content: flex-start; }
