@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db";
 import { userFeedback } from "@/db/schema";
-import { eq, sql } from "drizzle-orm";
+import { sql } from "drizzle-orm";
+import { requireUser } from "@/lib/auth-guard";
 
 /**
  * POST /api/feedback — submit user feedback/rating.
@@ -12,6 +13,9 @@ import { eq, sql } from "drizzle-orm";
  */
 export async function POST(request: Request) {
   try {
+    const guard = await requireUser();
+    if (guard instanceof NextResponse) return guard;
+
     const body = await request.json();
     const { rating, comment } = body;
 
@@ -22,21 +26,28 @@ export async function POST(request: Request) {
       );
     }
 
-    // Get the current user's session - we'll use a simple approach
-    // In production, you'd check the auth session properly
     const now = new Date();
     const localDate = now.toISOString().split("T")[0];
 
-    // Check if user already submitted feedback today
-    // We'll use a simple insert; the unique DB constraint will handle dedup
+    // One feedback per user per day: the unique (userId, localDate) index
+    // dedups, and onConflictDoNothing lets us answer with a clean 409.
     const [feedback] = await db
       .insert(userFeedback)
       .values({
+        userId: guard.user.id,
         rating,
         comment: comment || "",
         localDate,
       })
+      .onConflictDoNothing()
       .returning();
+
+    if (!feedback) {
+      return NextResponse.json(
+        { error: "You've already submitted feedback today" },
+        { status: 409 }
+      );
+    }
 
     return NextResponse.json(feedback, { status: 201 });
   } catch (error) {

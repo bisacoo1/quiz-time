@@ -17,12 +17,66 @@ import {
   BookOpen,
 } from "lucide-react";
 
-function useFeedback() {
-  const [avgRating, setAvgRating] = useState<number | null>(null);
-  const [totalFeedback, setTotalFeedback] = useState<number>(0);
-  const [canSubmit, setCanSubmit] = useState<boolean>(true);
+type FeedbackStatus = "submitted" | "signin" | "duplicate" | "error";
 
-  const submitFeedback = async (rating: number, comment: string) => {
+const reviews = [
+  {
+    userName: "Maria S.",
+    course: "Biology 101",
+    rating: 5,
+    comment:
+      "This app completely transformed how I study. The spaced repetition is genius!",
+  },
+  {
+    userName: "James K.",
+    course: "History 202",
+    rating: 4,
+    comment:
+      "Great for quick study sessions. Love being able to study offline.",
+  },
+  {
+    userName: "Priya R.",
+    course: "Chemistry 303",
+    rating: 5,
+    comment:
+      "The AI tutor explanations are incredibly helpful for difficult concepts.",
+  },
+];
+
+interface FeedbackStats {
+  averageRating: number;
+  totalFeedback: number;
+}
+
+async function fetchFeedbackStats(): Promise<FeedbackStats | null> {
+  try {
+    const res = await fetch("/api/feedback", { cache: "no-store" });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return {
+      averageRating: Number(data.averageRating) || 0,
+      totalFeedback: Number(data.totalFeedback) || 0,
+    };
+  } catch (error) {
+    console.error("Failed to load feedback stats:", error);
+    return null;
+  }
+}
+
+function useFeedback() {
+  const [stats, setStats] = useState<FeedbackStats | null>(null);
+  const avgRating = stats?.averageRating ?? null;
+  const totalFeedback = stats?.totalFeedback ?? 0;
+
+  const loadFeedbackStats = async () => {
+    const next = await fetchFeedbackStats();
+    if (next) setStats(next);
+  };
+
+  const submitFeedback = async (
+    rating: number,
+    comment: string
+  ): Promise<FeedbackStatus> => {
     try {
       const res = await fetch("/api/feedback", {
         method: "POST",
@@ -30,41 +84,116 @@ function useFeedback() {
         body: JSON.stringify({ rating, comment }),
       });
       if (res.ok) {
-        const data = await res.json();
-        setAvgRating(data.averageRating);
-        setTotalFeedback(data.totalFeedback);
-        setCanSubmit(false); // Disable until next day
+        await loadFeedbackStats();
+        return "submitted";
       }
+      if (res.status === 401) return "signin";
+      if (res.status === 409) return "duplicate";
+      return "error";
     } catch (error) {
       console.error("Failed to submit feedback:", error);
-    }
-  };
-
-  const loadFeedbackStats = async () => {
-    try {
-      const res = await fetch("/api/feedback");
-      if (res.ok) {
-        const data = await res.json();
-        setAvgRating(data.averageRating);
-        setTotalFeedback(data.totalFeedback);
-        // Enable submit if we have feedback from today or no feedback yet
-        setCanSubmit(data.totalFeedback === 0 || true);
-      }
-    } catch (error) {
-      console.error("Failed to load feedback stats:", error);
+      return "error";
     }
   };
 
   useEffect(() => {
-    loadFeedbackStats();
+    let cancelled = false;
+    fetchFeedbackStats().then((next) => {
+      if (!cancelled && next) setStats(next);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   return {
     avgRating,
     totalFeedback,
     submitFeedback,
-    canSubmit,
   };
+}
+
+function FeedbackForm() {
+  const { avgRating, totalFeedback, submitFeedback } = useFeedback();
+  const [rating, setRating] = useState(0);
+  const [comment, setComment] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [status, setStatus] = useState<FeedbackStatus | null>(null);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (rating < 1 || submitting) return;
+    setSubmitting(true);
+    setStatus(await submitFeedback(rating, comment.trim()));
+    setSubmitting(false);
+  };
+
+  const messages: Record<FeedbackStatus, string> = {
+    submitted: "Thanks for your feedback!",
+    signin: "Please sign in to leave feedback.",
+    duplicate: "You've already shared feedback today. Come back tomorrow!",
+    error: "Something went wrong. Please try again.",
+  };
+
+  return (
+    <section className="landing-feedback" aria-label="Share your feedback">
+      <div className="landing-feedback-container">
+        <h2>How is QuizTime working for you?</h2>
+        <p>Rate your experience and tell us what we can improve.</p>
+        <form onSubmit={handleSubmit}>
+          <div className="landing-rating-selector">
+            <span className="landing-rating-label" id="feedback-rating-label">
+              Your rating
+            </span>
+            <div className="landing-stars" role="group" aria-labelledby="feedback-rating-label">
+              {[1, 2, 3, 4, 5].map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  className={`landing-star-btn${value <= rating ? " active" : ""}`}
+                  aria-label={`${value} star${value === 1 ? "" : "s"}`}
+                  aria-pressed={value === rating}
+                  onClick={() => setRating(value)}
+                >
+                  <Star
+                    size={24}
+                    aria-hidden
+                    fill={value <= rating ? "currentColor" : "none"}
+                  />
+                </button>
+              ))}
+            </div>
+          </div>
+          <textarea
+            className="landing-textarea"
+            value={comment}
+            onChange={(e) => setComment(e.target.value)}
+            placeholder="Anything you'd like to add? (optional)"
+            aria-label="Feedback comment"
+            maxLength={500}
+          />
+          <button
+            type="submit"
+            className="landing-button-primary"
+            disabled={rating < 1 || submitting || status === "submitted"}
+          >
+            {submitting ? "Sending…" : "Send feedback"}
+          </button>
+        </form>
+        {status && (
+          <p className="landing-feedback-result" role="status">
+            {messages[status]}
+          </p>
+        )}
+        {totalFeedback > 0 && avgRating !== null && (
+          <p className="landing-feedback-result">
+            <span className="landing-avg-rating">{avgRating.toFixed(1)} / 5</span>{" "}
+            average from {totalFeedback} {totalFeedback === 1 ? "rating" : "ratings"} in the last 30 days
+          </p>
+        )}
+      </div>
+    </section>
+  );
 }
 
 const features = [
