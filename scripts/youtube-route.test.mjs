@@ -19,11 +19,15 @@ mock.module("../src/db/index.ts", {
   namedExports: {
     pool: {
       async query(sql, params) {
-        assert.match(sql, /INSERT INTO youtube_generation_usage/);
         assert.equal(params[0], "youtube-test-user");
-        if (dailyCount >= 5) return { rows: [], rowCount: 0 };
-        dailyCount += 1;
-        return { rows: [{ count: dailyCount }], rowCount: 1 };
+        if (sql.includes("INSERT INTO youtube_generation_usage")) {
+          if (dailyCount >= 5) return { rows: [], rowCount: 0 };
+          dailyCount += 1;
+          return { rows: [{ count: dailyCount }], rowCount: 1 };
+        }
+        assert.match(sql, /UPDATE youtube_generation_usage/);
+        dailyCount = Math.max(0, dailyCount - 1);
+        return { rows: [], rowCount: 1 };
       },
     },
   },
@@ -112,6 +116,40 @@ test("enforces five video generations per user per UTC day", async () => {
   assert.equal(body.remainingToday, 0);
   assert.match(body.error, /5 YouTube videos per day/);
   assert.equal(capturedRequest, null);
+});
+
+test("reports the Gemini model quota and releases QuizTime's allowance on 429", async () => {
+  upstreamResponse = new Response(
+    JSON.stringify({
+      error: {
+        message: "Rate limit exceeded. Please retry in 4h48m52s or upgrade your tier.",
+        code: "too_many_requests",
+      },
+    }),
+    { status: 429, headers: { "content-type": "application/json" } }
+  );
+
+  const response = await post({ url: "https://youtu.be/dQw4w9WgXcQ" });
+  const body = await response.json();
+
+  assert.equal(response.status, 429);
+  assert.match(body.error, /quota for this model is exhausted/i);
+  assert.match(body.error, /4h48m52s/);
+  assert.equal(dailyCount, 0);
+});
+
+test("distinguishes temporary Gemini overload and releases QuizTime's allowance", async () => {
+  upstreamResponse = new Response(
+    JSON.stringify({ error: { message: "High demand", code: "service_unavailable" } }),
+    { status: 503, headers: { "content-type": "application/json" } }
+  );
+
+  const response = await post({ url: "https://youtu.be/dQw4w9WgXcQ" });
+  const body = await response.json();
+
+  assert.equal(response.status, 503);
+  assert.match(body.error, /temporarily busy/i);
+  assert.equal(dailyCount, 0);
 });
 
 test.after(() => {

@@ -95,6 +95,19 @@ function parseVideoStudySet(text: string): {
   };
 }
 
+async function releaseVideoUsage(userId: string, usageDate: string): Promise<void> {
+  try {
+    await pool.query(
+      `UPDATE youtube_generation_usage
+       SET count = GREATEST(count - 1, 0)
+       WHERE user_id = $1 AND usage_date = $2::date`,
+      [userId, usageDate]
+    );
+  } catch (error) {
+    console.error("YouTube usage reservation release failed:", error);
+  }
+}
+
 export async function POST(request: NextRequest) {
   const guard = await requireUser();
   if (guard instanceof NextResponse) return guard;
@@ -135,16 +148,17 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const usageDate = new Date().toISOString().slice(0, 10);
   let usageCount: number;
   try {
     const usage = await pool.query<{ count: number }>(
       `INSERT INTO youtube_generation_usage (user_id, usage_date, count)
-       VALUES ($1, (now() AT TIME ZONE 'UTC')::date, 1)
+       VALUES ($1, $2::date, 1)
        ON CONFLICT (user_id, usage_date) DO UPDATE
        SET count = youtube_generation_usage.count + 1
-       WHERE youtube_generation_usage.count < $2
+       WHERE youtube_generation_usage.count < $3
        RETURNING count`,
-      [guard.user.id, YOUTUBE_DAILY_GENERATION_LIMIT]
+      [guard.user.id, usageDate, YOUTUBE_DAILY_GENERATION_LIMIT]
     );
     if (usage.rowCount === 0) {
       return NextResponse.json(
@@ -185,6 +199,7 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error("Gemini YouTube video request failed:", error);
+    await releaseVideoUsage(guard.user.id, usageDate);
     return NextResponse.json(
       { error: "Couldn't reach Gemini to analyze this video. Please try again." },
       { status: 502 }
@@ -197,11 +212,28 @@ export async function POST(request: NextRequest) {
       status: response.status,
       details: details.slice(0, 1000),
     });
-    const message =
-      response.status === 429
-        ? "Gemini's video-analysis limit has been reached. Please try again later."
-        : "Gemini couldn't access this video. Check that it is public and try again.";
-    return NextResponse.json({ error: message }, { status: response.status === 429 ? 503 : 502 });
+    await releaseVideoUsage(guard.user.id, usageDate);
+    if (response.status === 429) {
+      const retryAfter = details.match(/retry in ([^.]+?)(?:\s+or upgrade|[.!]|$)/i)?.[1];
+      return NextResponse.json(
+        {
+          error: retryAfter
+            ? `Gemini's request quota for this model is exhausted. Try again in ${retryAfter}, or check the project's Gemini API limits.`
+            : "Gemini's request quota for this model is exhausted. Try again later or check the project's Gemini API limits.",
+        },
+        { status: 429 }
+      );
+    }
+    if (response.status === 503 || response.status === 502) {
+      return NextResponse.json(
+        { error: "Gemini is temporarily busy. Wait a minute and try again." },
+        { status: 503 }
+      );
+    }
+    return NextResponse.json(
+      { error: "Gemini couldn't access this video. Check that it is public and try again." },
+      { status: 502 }
+    );
   }
 
   let result: unknown;
@@ -209,6 +241,7 @@ export async function POST(request: NextRequest) {
     result = await response.json();
   } catch {
     console.error("Gemini returned a non-JSON YouTube analysis response.");
+    await releaseVideoUsage(guard.user.id, usageDate);
     return NextResponse.json(
       { error: "Gemini returned an unreadable response. Please try again." },
       { status: 502 }
@@ -222,6 +255,7 @@ export async function POST(request: NextRequest) {
   const studySet = parseVideoStudySet(outputText);
   if (!studySet) {
     console.error("Gemini returned invalid YouTube study-set content.");
+    await releaseVideoUsage(guard.user.id, usageDate);
     return NextResponse.json(
       { error: "Couldn't create a valid study set from this video. Try another public video." },
       { status: 502 }
