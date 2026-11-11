@@ -10,6 +10,7 @@ import {
   Brain,
   FileText,
   Sparkles,
+  Star,
   Target,
   Users,
   Library,
@@ -125,6 +126,19 @@ function PublicStats() {
 }
 
 export function LandingPage() {
+  const [flashcardFlipped, setFlashcardFlipped] = useState(false);
+
+  const handleFlashcardClick = () => {
+    setFlashcardFlipped(prev => !prev);
+  };
+
+  const handleFlashcardKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      setFlashcardFlipped(prev => !prev);
+    }
+  };
+
   return (
     <main className="landing-page">
       <header className="landing-header">
@@ -140,8 +154,8 @@ export function LandingPage() {
           <span>QuizTime</span>
         </Link>
         <nav className="landing-nav" aria-label="Main navigation">
-          <a href="#features">Features</a>
-          <a href="#how-it-works">How it works</a>
+          <a href="#features" className="landing-nav-link">Features</a>
+          <a href="#how-it-works" className="landing-nav-link">How it works</a>
         </nav>
         <Link className="landing-signin" href="/login">Sign in</Link>
       </header>
@@ -171,30 +185,46 @@ export function LandingPage() {
             <span className="landing-note-icon"><Sparkles size={16} strokeWidth={2.5} aria-hidden /></span>
             <span><strong>One small session</strong><small>can make a big difference</small></span>
           </div>
-          <div className="landing-flashcard">
-            <div className="landing-flashcard-top">
-              <span><BookOpenCheck size={15} strokeWidth={2.5} aria-hidden /> QUICK STUDY</span>
-              <span>01 / 12</span>
-            </div>
-            <div className="landing-flashcard-content">
-              <span className="landing-card-label">BIOLOGY · CELL DIVISION</span>
-              <h2>What are the four phases of mitosis?</h2>
-              <div className="landing-card-answer">
-                <span>Take a moment to think it through…</span>
-                <span className="landing-card-dots"><i /><i /><i /></span>
+          <div
+            className={`landing-flashcard ${flashcardFlipped ? 'flipped' : ''}`}
+            tabIndex={0}
+            role="button"
+            aria-label="Interactive flashcard demo - press to flip"
+            aria-pressed={flashcardFlipped}
+            onClick={handleFlashcardClick}
+            onKeyDown={handleFlashcardKeyDown}
+          >
+            <div className="landing-flashcard-inner">
+              <div className="landing-flashcard-front">
+                <div className="landing-flashcard-top">
+                  <span><BookOpenCheck size={15} strokeWidth={2.5} aria-hidden /> QUICK STUDY</span>
+                  <span>01 / 12</span>
+                </div>
+                <div className="landing-flashcard-content">
+                  <span className="landing-card-label">BIOLOGY · CELL DIVISION</span>
+                  <h2>What are the four phases of mitosis?</h2>
+                  <div className="landing-card-answer">
+                    <span>Take a moment to think it through…</span>
+                    <span className="landing-card-dots"><i /><i /><i /></span>
+                  </div>
+                </div>
+                <div className="landing-flashcard-bottom">
+                  <span><span className="landing-progress-dot" /> Keep your streak going</span>
+                  <span className="landing-card-arrow"><ArrowRight size={16} aria-hidden /></span>
+                </div>
               </div>
-            </div>
-            <div className="landing-flashcard-bottom">
-              <span><span className="landing-progress-dot" /> Keep your streak going</span>
-              <span className="landing-card-arrow"><ArrowRight size={16} aria-hidden /></span>
+              <div className="landing-flashcard-back">
+                <h3>Prophase, Metaphase, Anaphase, Telophase</h3>
+                <p>PMAT - remember the order!</p>
+              </div>
             </div>
           </div>
           <div className="landing-preview-note landing-preview-note-bottom">
-            <span className="landing-streak-mark">✦</span>
+            <span className="landing-streak-mark"><Star size={19} strokeWidth={2.5} aria-hidden /></span>
             <span><strong>Made for how you learn</strong><small>Cards · quizzes · spaced review</small></span>
           </div>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img className="landing-mascot" src="/hamster/hamster-wave.png" alt="" />
+          <img className="landing-mascot" src="/hamster/hamster-wave.png" alt="QuizTime mascot waving" />
         </div>
       </section>
 
@@ -214,7 +244,14 @@ export function LandingPage() {
         </div>
         <div className="landing-feature-grid">
           {features.map(({ icon: Icon, title, description, tone }) => (
-            <article className={`landing-feature-card landing-feature-${tone}`} key={title}>
+            <article
+              className={`landing-feature-card landing-feature-${tone}`}
+              key={title}
+              tabIndex={0}
+              role="button"
+              aria-label={`Learn about ${title}`}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.currentTarget.click(); } }}
+            >
               <span className="landing-feature-icon"><Icon size={21} aria-hidden /></span>
               <h3>{title}</h3>
               <p>{description}</p>
@@ -230,9 +267,18 @@ export function LandingPage() {
           <p>Spend less time setting up and more time learning what matters.</p>
         </div>
         <ol className="landing-steps">
-          <li><span>01</span><div><strong>Bring your material</strong><p>Upload a file, snap a photo, or paste your notes.</p></div></li>
-          <li><span>02</span><div><strong>Make it yours</strong><p>Review your flashcards and choose how you want to practice.</p></div></li>
-          <li><span>03</span><div><strong>Build it into memory</strong><p>Study a little at a time and let spaced review help you remember.</p></div></li>
+          <li>
+            <span aria-hidden="true">01</span>
+            <div><strong>Bring your material</strong><p>Upload a file, snap a photo, or paste your notes.</p></div>
+          </li>
+          <li>
+            <span aria-hidden="true">02</span>
+            <div><strong>Make it yours</strong><p>Review your flashcards and choose how you want to practice.</p></div>
+          </li>
+          <li>
+            <span aria-hidden="true">03</span>
+            <div><strong>Build it into memory</strong><p>Study a little at a time and let spaced review help you remember.</p></div>
+          </li>
         </ol>
       </section>
 
