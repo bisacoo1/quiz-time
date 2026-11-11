@@ -3961,7 +3961,6 @@ body.maintenance-active {
   color: var(--primary);
   font-size: 18px;
   font-weight: 700;
-}
   margin: 0;
   color: var(--landing-ink);
   font-family: var(--font-display);
