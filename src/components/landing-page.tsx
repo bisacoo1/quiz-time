@@ -100,25 +100,16 @@ function PublicStats() {
     <section className="landing-stats" aria-label="QuizTime statistics">
       <div className="landing-stats-grid">
         <article className="landing-stat-card">
-          <div className="landing-stat-icon">
-            <Users size={24} strokeWidth={2.5} aria-hidden />
-          </div>
           <p className="landing-stat-value">{formatNumber(stats.students)}</p>
-          <p className="landing-stat-label">{stats.students === 1 ? "Student" : "Students"}</p>
+          <p className="landing-stat-label">Real Students</p>
         </article>
         <article className="landing-stat-card">
-          <div className="landing-stat-icon">
-            <Library size={24} strokeWidth={2.5} aria-hidden />
-          </div>
           <p className="landing-stat-value">{formatNumber(stats.cardsCreated)}</p>
           <p className="landing-stat-label">Cards Created</p>
         </article>
         <article className="landing-stat-card">
-          <div className="landing-stat-icon">
-            <BookOpen size={24} strokeWidth={2.5} aria-hidden />
-          </div>
           <p className="landing-stat-value">{formatNumber(stats.cardsBeingStudied)}</p>
-          <p className="landing-stat-label">Cards Being Studied</p>
+          <p className="landing-stat-label">Right Now</p>
         </article>
       </div>
     </section>
