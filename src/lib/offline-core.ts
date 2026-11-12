@@ -103,6 +103,9 @@ export interface OfflineDeck {
   createdAt: string;
   /** Subject folder the deck is filed under (null = All Sets only). */
   subjectId: number | null;
+  /** Board-exam prep inclusion/mapping (null = not explicitly mapped). */
+  boardExamCode: string | null;
+  boardSubjectCode: string | null;
   cards: OfflineCard[];
   progress: OfflineProgress[];
   pinned: boolean;
@@ -226,6 +229,9 @@ export interface SessionPayload {
   createdAt: string | Date;
   /** Subject folder the deck is filed under (null/absent = All Sets only). */
   subjectId?: number | null;
+  /** Board-exam prep inclusion/mapping for this set. */
+  boardExamCode?: string | null;
+  boardSubjectCode?: string | null;
 }
 
 const toIsoString = (value: string | Date | null | undefined, fallback: string): string => {
@@ -255,6 +261,8 @@ export function buildOfflineDeck(input: {
     sourceType: input.session.sourceType ?? "text",
     createdAt: toIsoString(input.session.createdAt, nowIso(now)),
     subjectId: input.session.subjectId ?? null,
+    boardExamCode: input.session.boardExamCode ?? null,
+    boardSubjectCode: input.session.boardSubjectCode ?? null,
     cards: [...(input.cards ?? [])]
       .map((card) => ({
         id: card.id,
@@ -319,6 +327,8 @@ export interface OfflineSessionRow {
   summary: string | null;
   createdAt: string;
   subjectId: number | null;
+  boardExamCode: string | null;
+  boardSubjectCode: string | null;
   cardCount: number;
   knownCount: number;
   dueCount: number;
@@ -352,6 +362,8 @@ export function buildOfflineSessionRows(
         summary: deck.summary,
         createdAt: deck.createdAt,
         subjectId: deck.subjectId ?? null,
+        boardExamCode: deck.boardExamCode ?? null,
+        boardSubjectCode: deck.boardSubjectCode ?? null,
         cardCount: deck.cards.length,
         knownCount: deck.progress.filter((p) => p.isKnown).length,
         dueCount: rows.filter((row) => new Date(row.dueAt).getTime() <= now.getTime()).length,

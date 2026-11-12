@@ -178,6 +178,9 @@ interface StudySession {
   createdAt: string;
   /** Subject folder this set is filed under (null/absent = All Sets only). */
   subjectId?: number | null;
+  /** Board-exam prep inclusion (exam code) and subject mapping. */
+  boardExamCode?: string | null;
+  boardSubjectCode?: string | null;
   cardCount: number;
   knownCount?: number;
   /** Cards waiting in the spaced-repetition queue right now. */

@@ -208,6 +208,13 @@ export const studySessions = pgTable(
     subjectId: integer("subject_id").references(() => subjects.id, {
       onDelete: "set null",
     }),
+    /**
+     * If set, this deck is included in board-exam prep for this exam code.
+     * Null means not explicitly included (readiness falls back to all sets).
+     */
+    boardExamCode: text("board_exam_code"),
+    /** Board-exam subject code mapping for readiness classification. */
+    boardSubjectCode: text("board_subject_code"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => [

@@ -47,6 +47,8 @@ export async function GET(request: NextRequest) {
         createdAt: studySessions.createdAt,
         // Kept in the snapshot so the subject grouping still renders offline.
         subjectId: studySessions.subjectId,
+        boardExamCode: studySessions.boardExamCode,
+        boardSubjectCode: studySessions.boardSubjectCode,
       })
       .from(studySessions)
       .where(

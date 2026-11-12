@@ -3,6 +3,7 @@ import { db } from "@/db";
 import { studySessions, flashcards, cardProgress, subjects } from "@/db/schema";
 import { and, eq, sql } from "drizzle-orm";
 import { requireUser } from "@/lib/auth-guard";
+import { getBoardExamByCode, normalizeBoardExamCode } from "@/lib/board-exams";
 
 // Same limits as POST /api/sessions — keep deck metadata consistent.
 const MAX_TITLE_CHARS = 120;
@@ -99,9 +100,9 @@ export async function PATCH(
     if (notFound) return notFound;
 
     const body = await request.json();
-    const { cardId, isKnown, title, summary, subjectId } = body;
+    const { cardId, isKnown, title, summary, subjectId, boardExamCode, boardSubjectCode } = body;
 
-    // ── Move to / out of a subject folder ─────────────────────────────────
+    // ── Move to / out of a subject folder ──────────────────────────────────
     // A payload carrying `subjectId` (possibly null = unfile) re-files the
     // deck. Renames stay on the metadata path below — one request, one job.
     if (subjectId !== undefined) {
@@ -133,7 +134,68 @@ export async function PATCH(
       return NextResponse.json({ success: true, session: updated });
     }
 
-    // ── Deck metadata update (rename / edit summary) ─────────────────────
+    // ── Board-exam prep inclusion / subject mapping ───────────────────────
+    // `boardExamCode`: null clears inclusion; a valid exam code includes the
+    // set for that exam. `boardSubjectCode`: subject within that exam, or null
+    // to let readiness classify by keywords.
+    if (boardExamCode !== undefined || boardSubjectCode !== undefined) {
+      const update: { boardExamCode?: string | null; boardSubjectCode?: string | null } = {};
+
+      let resolvedExam: string | null = session.boardExamCode ?? null;
+      if (boardExamCode !== undefined) {
+        if (boardExamCode === null) {
+          resolvedExam = null;
+          update.boardExamCode = null;
+          update.boardSubjectCode = null;
+        } else {
+          if (typeof boardExamCode !== "string") {
+            return NextResponse.json({ error: "boardExamCode must be a string or null" }, { status: 400 });
+          }
+          const normalized = normalizeBoardExamCode(boardExamCode);
+          const exam = normalized ? getBoardExamByCode(normalized) : undefined;
+          if (!exam) {
+            return NextResponse.json({ error: "Invalid board exam" }, { status: 400 });
+          }
+          resolvedExam = exam.code;
+          update.boardExamCode = exam.code;
+        }
+      }
+
+      if (boardSubjectCode !== undefined) {
+        if (boardSubjectCode === null) {
+          update.boardSubjectCode = null;
+        } else {
+          if (typeof boardSubjectCode !== "string") {
+            return NextResponse.json({ error: "boardSubjectCode must be a string or null" }, { status: 400 });
+          }
+          const examCode = resolvedExam ?? (typeof update.boardExamCode === "string" ? update.boardExamCode : null);
+          if (!examCode) {
+            return NextResponse.json({ error: "Select a board exam before mapping a subject" }, { status: 400 });
+          }
+          const exam = getBoardExamByCode(examCode);
+          const match = exam?.subjects.find((s) => s.code === boardSubjectCode.trim());
+          if (!match) {
+            return NextResponse.json({ error: "Invalid board subject" }, { status: 400 });
+          }
+          update.boardSubjectCode = match.code;
+          if (update.boardExamCode === undefined) update.boardExamCode = examCode;
+        }
+      }
+
+      const [updated] = await db
+        .update(studySessions)
+        .set(update)
+        .where(eq(studySessions.id, sessionId))
+        .returning({
+          id: studySessions.id,
+          boardExamCode: studySessions.boardExamCode,
+          boardSubjectCode: studySessions.boardSubjectCode,
+        });
+
+      return NextResponse.json({ success: true, session: updated });
+    }
+
+    // ── Deck metadata update (rename / edit summary) ──────────────────────
     // Any payload carrying `title` or `summary` edits the deck itself;
     // anything else falls through to the card-progress path below.
     if (title !== undefined || summary !== undefined) {

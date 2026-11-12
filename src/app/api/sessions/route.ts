@@ -24,6 +24,9 @@ export async function GET() {
         createdAt: studySessions.createdAt,
         // Which subject folder the set is filed under (null = All Sets only).
         subjectId: studySessions.subjectId,
+        // Board-exam prep inclusion/mapping for this set (null = not mapped).
+        boardExamCode: studySessions.boardExamCode,
+        boardSubjectCode: studySessions.boardSubjectCode,
         // ::int — pg returns bigint as strings, which breaks numeric
         // comparisons client-side ("9" >= "10" is true as strings).
         cardCount: sql<number>`count(${flashcards.id})::int`,
