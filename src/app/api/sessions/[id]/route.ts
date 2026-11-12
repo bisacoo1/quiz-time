@@ -3,7 +3,7 @@ import { db } from "@/db";
 import { studySessions, flashcards, cardProgress, subjects } from "@/db/schema";
 import { and, eq, sql } from "drizzle-orm";
 import { requireUser } from "@/lib/auth-guard";
-import { getBoardExamByCode, normalizeBoardExamCode } from "@/lib/board-exams";
+import { getBoardExamByCode } from "@/lib/board-exams";
 
 // Same limits as POST /api/sessions — keep deck metadata consistent.
 const MAX_TITLE_CHARS = 120;
@@ -96,8 +96,9 @@ export async function PATCH(
 
     const { id } = await params;
     const sessionId = parseInt(id, 10);
-    const [, notFound] = await loadOwnedSession(sessionId, guard.user.id);
+    const [session, notFound] = await loadOwnedSession(sessionId, guard.user.id);
     if (notFound) return notFound;
+    if (!session) return NextResponse.json({ error: "Session not found" }, { status: 404 });
 
     const body = await request.json();
     const { cardId, isKnown, title, summary, subjectId, boardExamCode, boardSubjectCode } = body;
@@ -151,8 +152,8 @@ export async function PATCH(
           if (typeof boardExamCode !== "string") {
             return NextResponse.json({ error: "boardExamCode must be a string or null" }, { status: 400 });
           }
-          const normalized = normalizeBoardExamCode(boardExamCode);
-          const exam = normalized ? getBoardExamByCode(normalized) : undefined;
+          const normalized = boardExamCode.trim().toUpperCase();
+          const exam = getBoardExamByCode(normalized);
           if (!exam) {
             return NextResponse.json({ error: "Invalid board exam" }, { status: 400 });
           }
