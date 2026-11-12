@@ -1,5 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
-import { eq, and, sql } from "drizzle-orm";
+import { NextResponse } from "next/server";
+import { eq, and, inArray } from "drizzle-orm";
 import { db } from "@/db";
 import { users, studySessions, flashcards, cardReviews, cardProgress } from "@/db/schema";
 import { requireUser } from "@/lib/auth-guard";
@@ -211,7 +211,7 @@ export async function GET() {
         eq(cardReviews.cardId, flashcards.id),
         eq(cardReviews.userId, userId)
       ))
-      .where(sql`${flashcards.sessionId} IN (${deckIds.join(",")})`);
+      .where(inArray(flashcards.sessionId, deckIds));
 
     // 3. Classify cards into board subjects
     const subjects = exam.subjects;
