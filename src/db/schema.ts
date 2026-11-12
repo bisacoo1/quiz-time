@@ -27,6 +27,17 @@ export const users = pgTable("users", {
    * answer the picker — the AI prompt falls back to generic framing.
    */
   course: text("course"),
+  /**
+   * Board exam code (e.g., "BLEPT", "NLE", "CELE", "MLE", "RADTECH", "CRIM", "CPA").
+   * Auto-derived from `course` via src/lib/board-exams.ts when the user saves their course.
+   * Nullable for courses without a board exam or users who haven't set a course.
+   */
+  boardExamCode: text("board_exam_code"),
+  /**
+   * Target board exam date (the sitting they're preparing for).
+   * Set during onboarding or in Board Readiness page. Used for countdown & study plan.
+   */
+  targetExamDate: date("target_exam_date", { mode: "string" }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -438,3 +449,109 @@ export const pushDeliveries = pgTable("push_deliveries", {
   leaseUntil: timestamp("lease_until", { withTimezone: true }),
   sentAt: timestamp("sent_at", { withTimezone: true }),
 }, (t) => [uniqueIndex("push_deliveries_notice_device_key").on(t.notificationId, t.subscriptionId), index("push_deliveries_pending_idx").on(t.status, t.nextAttemptAt)]);
+
+/**
+ * Board Exam Question Bank — curated past-board-style questions.
+ *
+ * Seeded by admins/educators; users can also contribute (pending verification).
+ * Used in: Simulated Board Exam mode, Weak-Area Drills, AI Tutor "board-style" questions.
+ */
+export const boardExamQuestions = pgTable(
+  "board_exam_questions",
+  {
+    id: serial("id").primaryKey(),
+    /** Board exam code: "BLEPT", "NLE", "CELE", "MLE", "RADTECH", "CRIM", "CPA" */
+    examCode: text("exam_code").notNull(),
+    /** Subject code within that exam (e.g., "GENED", "PROFED", "MAJOR") */
+    subjectCode: text("subject_code").notNull(),
+    /** Year of the exam sitting (e.g., 2024) */
+    year: integer("year").notNull(),
+    /** Session: "March", "September", "June", "December", "May", "October", "August" */
+    session: text("session").notNull(),
+    /** The question stem */
+    question: text("question").notNull(),
+    /** Options as JSON array: ["A. Option A", "B. Option B", "C. Option C", "D. Option D"] */
+    options: jsonb("options").$type<string[]>().notNull(),
+    /** Index of correct option (0-based) */
+    correctIndex: integer("correct_index").notNull(),
+    /** Explanation for why the answer is correct */
+    explanation: text("explanation"),
+    /** Difficulty: "easy" | "medium" | "hard" */
+    difficulty: text("difficulty").notNull().default("medium"),
+    /** Granular topic tags for weak-area mapping (e.g., ["assessment", "bloom-taxonomy"]) */
+    topicTags: text("topic_tags").array().notNull().default([]),
+    /** Source: "official" | "curated" | "user-contributed" | "ai-generated" */
+    source: text("source").notNull().default("curated"),
+    /** For user-contributed: user who submitted */
+    contributedBy: text("contributed_by").references(() => users.id, {
+      onDelete: "set null",
+      onUpdate: "cascade",
+    }),
+    /** Verification status: "unverified" | "verified" | "rejected" */
+    verificationStatus: text("verification_status").notNull().default("unverified"),
+    /** Number of community verifications (for crowdsourced questions) */
+    verificationCount: integer("verification_count").notNull().default(0),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("board_exam_questions_exam_subject_idx").on(table.examCode, table.subjectCode),
+    index("board_exam_questions_year_session_idx").on(table.year, table.session),
+    index("board_exam_questions_verification_idx").on(table.verificationStatus),
+    index("board_exam_questions_topic_tags_idx").on(table.topicTags),
+  ]
+);
+
+/**
+ * Board Exam Simulated Sessions — records of full-length practice exams.
+ */
+export const boardExamSessions = pgTable(
+  "board_exam_sessions",
+  {
+    id: serial("id").primaryKey(),
+    userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade", onUpdate: "cascade" }),
+    examCode: text("exam_code").notNull(),
+    /** Configuration snapshot for this session */
+    config: jsonb("config").$type<{
+      totalQuestions: number;
+      totalMinutes: number;
+      subjectBreakdown: { subjectCode: string; questionCount: number }[];
+    }>().notNull(),
+    /** Overall score percentage */
+    score: real("score").notNull(),
+    /** Whether they passed (based on exam's passing grade) */
+    passed: boolean("passed").notNull(),
+    /** Time used in minutes */
+    timeUsedMinutes: integer("time_used_minutes").notNull(),
+    /** Per-subject breakdown */
+    subjectResults: jsonb("subject_results").$type<{
+      subjectCode: string;
+      correct: number;
+      total: number;
+      score: number;
+      percentile: number;
+    }[]>().notNull(),
+    /** Answers for review: { questionId, chosenIndex, correctIndex, isCorrect, subjectCode }[] */
+    answers: jsonb("answers").$type<{
+      questionId: number;
+      chosenIndex: number | null;
+      correctIndex: number;
+      isCorrect: boolean;
+      subjectCode: string;
+      timeSpentSeconds: number;
+    }[]>().notNull(),
+    /** Flagged/marked-for-review question IDs */
+    flaggedQuestions: integer("flagged_questions").array().notNull().default([]),
+    startedAt: timestamp("started_at").notNull(),
+    completedAt: timestamp("completed_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("board_exam_sessions_user_idx").on(table.userId),
+    index("board_exam_sessions_exam_idx").on(table.examCode),
+    index("board_exam_sessions_completed_idx").on(table.completedAt),
+  ]
+);
+
+export type BoardExamQuestion = typeof boardExamQuestions.$inferSelect;
+export type BoardExamSession = typeof boardExamSessions.$inferSelect;

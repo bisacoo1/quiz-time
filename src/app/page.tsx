@@ -48,6 +48,7 @@ import { useOfflineIdentity, useOnlineStatus, useOutbox } from "@/lib/use-offlin
 import { usePresenceHeartbeat } from "@/lib/use-presence";
 import { MascotHost, MascotInline } from "@/components/hamster-mascot";
 import { CoursePickerModal } from "@/components/course-picker";
+import { BoardReadinessDashboard } from "@/components/BoardReadinessDashboard";
 import NotificationCenter from "@/components/notification-center";
 import { useNotifications } from "@/lib/use-notifications";
 import { useDragScroll } from "@/lib/use-drag-scroll";
@@ -194,7 +195,7 @@ interface Subject {
   setCount: number;
 }
 
-type Tab = "home" | "upload" | "quiz" | "sessions" | "stats" | "review";
+type Tab = "home" | "upload" | "quiz" | "sessions" | "stats" | "review" | "board-readiness";
 type QuizMode = "select" | "study" | "exam" | "identify" | "enumerate" | "review";
 /** The three scored modes share one run state machine (questions, score, streak). */
 type ScoredMode = "exam" | "identify" | "enumerate";
@@ -8364,6 +8365,7 @@ export default function App() {
     if (tab === "sessions") return "Browsing my sets";
     if (tab === "review") return "Reviewing due cards";
     if (tab === "stats") return "Checking stats";
+    if (tab === "board-readiness") return "Checking board exam readiness";
     return "On the home screen";
   }, [
     deckEditor,
@@ -9057,6 +9059,10 @@ export default function App() {
         />
       );
     }
+    if (tab === "board-readiness") {
+      if (!signedIn) return <SignInPrompt feature="see your board exam readiness" />;
+      return <BoardReadinessDashboard />;
+    }
     if (tab === "review") {
       if (!signedIn) return <SignInPrompt feature="review your cards" />;
       return (
@@ -9078,6 +9084,7 @@ export default function App() {
     { id: "sessions" as Tab, label: "My Sets", Icon: Library },
     { id: "review" as Tab, label: "Review", Icon: Brain, badge: dueCount },
     { id: "stats" as Tab, label: "Stats", Icon: ChartColumn },
+    { id: "board-readiness" as Tab, label: "Board Ready", Icon: Target },
   ];
 
   const presenceOnline = presenceRoster.roster?.users.filter((u) => u.online) ?? [];

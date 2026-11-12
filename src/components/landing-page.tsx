@@ -12,9 +12,6 @@ import {
   Sparkles,
   Star,
   Target,
-  Users,
-  Library,
-  BookOpen,
 } from "lucide-react";
 
 type FeedbackStatus = "submitted" | "signin" | "duplicate" | "error";
@@ -488,6 +485,26 @@ export function LandingPage() {
       </div>
 
       <FeedbackForm />
+
+      {/* Board Exam Teaser */}
+      <section className="landing-board-exam" aria-label="Board exam preparation">
+        <div className="landing-board-exam-card">
+          <div className="landing-board-exam-icon">
+            <Target size={32} strokeWidth={2} aria-hidden />
+          </div>
+          <div>
+            <h3 style={{ margin: "0 0 6px", fontSize: 20, fontWeight: 800 }}>Preparing for your board exam?</h3>
+            <p style={{ margin: "0 0 16px", color: "var(--text-muted)", fontSize: 15, lineHeight: 1.6 }}>
+              QuizTime has tailored question banks & simulated exams for <strong>BLEPT</strong>, <strong>NLE</strong>, <strong>CELE</strong>, <strong>MLE</strong>,
+              <strong>RADTECH</strong>, <strong>Criminology</strong>, <strong>CPA</strong> — with weighted readiness tracking,
+              AI board-style coaching, and past-question patterns.
+            </p>
+            <a className="landing-button landing-button-primary" href="/login">
+              Start your board prep <ArrowRight size={17} aria-hidden />
+            </a>
+          </div>
+        </div>
+      </section>
 
       <section className="landing-features" id="features">
         <div className="landing-section-heading">
