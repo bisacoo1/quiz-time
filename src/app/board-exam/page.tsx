@@ -1,37 +1,20 @@
-"use client";
+﻿"use client";
 
+import { Suspense } from "react";
 import { useSession } from "next-auth/react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { BoardExamSimulator } from "@/components/BoardExamSimulator";
-import { useSearchParams } from "next/navigation";
-import { useRouter } from "next/navigation";
+import { getBoardExamByCode } from "@/lib/board-exams";
 
-export default function BoardExamPage() {
-  const { data: session, status } = useSession();
+function BoardExamPageContent() {
+  const { status } = useSession();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const examCode = searchParams.get("exam") || "BLEPT";
-
-  // Get exam name from code
-  const examNames: Record<string, string> = {
-    BLEPT: "Board Licensure Examination for Professional Teachers",
-    NLE: "Nurse Licensure Examination",
-    CELE: "Civil Engineering Licensure Examination",
-    MLE: "Medical Technology Licensure Examination",
-    RADTECH: "Radiologic Technology Licensure Examination",
-    CRIM: "Criminology Licensure Examination",
-    CPA: "Certified Public Accountant Licensure Examination",
-  };
-
-  const examName = examNames[examCode] || "Board Exam";
-  const courseNames: Record<string, string> = {
-    BLEPT: "BS Education",
-    NLE: "BS Nursing",
-    CELE: "BS Civil Engineering",
-    MLE: "BS Medical Technology",
-    RADTECH: "BS Radiologic Technology",
-    CRIM: "BS Criminology",
-    CPA: "BS Accountancy",
-  };
-  const course = courseNames[examCode] || "Your Course";
+  const subjectCode = searchParams.get("subject");
+  const mode = searchParams.get("mode") === "drill" ? "drill" : "full";
+  const exam = getBoardExamByCode(examCode);
+  const examName = exam?.name || "Board Exam";
 
   if (status === "loading") {
     return (
@@ -41,36 +24,37 @@ export default function BoardExamPage() {
     );
   }
 
-  const router = useRouter();
-
   if (status === "unauthenticated") {
-    router.push(`/login?callbackUrl=/board-exam?exam=${examCode}`);
+    const cb = `/board-exam?exam=${examCode}${subjectCode ? `&subject=${subjectCode}` : ""}${mode === "drill" ? "&mode=drill" : ""}`;
+    router.push(`/login?callbackUrl=${encodeURIComponent(cb)}`);
     return null;
   }
 
-  const handleComplete = (result: {
-    score: number;
-    passed: boolean;
-    subjectResults: { subjectCode: string; correct: number; total: number; score: number }[];
-    answers: any[];
-    timeUsedMinutes: number;
-  }) => {
-    // Result is handled by the component (shows results screen)
-    // Could also save to database here via API call
-    console.log("Exam completed:", result);
-  };
-
-  const handleExit = () => {
-    window.location.href = "/board-readiness";
-  };
+  if (!exam) {
+    return (
+      <div style={{ padding: 24, textAlign: "center" }}>
+        <p>Unknown exam code.</p>
+      </div>
+    );
+  }
 
   return (
     <BoardExamSimulator
       examCode={examCode}
       examName={examName}
-      course={course}
-      onComplete={handleComplete}
-      onExit={handleExit}
+      subjectCode={subjectCode}
+      mode={mode}
+      onExit={() => {
+        window.location.href = "/board-readiness";
+      }}
     />
+  );
+}
+
+export default function BoardExamPage() {
+  return (
+    <Suspense fallback={<div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "60vh" }}><div className="spinner" style={{ width: 40, height: 40, borderWidth: 3 }} /></div>}>
+      <BoardExamPageContent />
+    </Suspense>
   );
 }

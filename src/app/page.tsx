@@ -8240,11 +8240,14 @@ export default function App() {
 
   // ── Course (course-tailored flashcards) ────────────────────────────────────
   // The student's course ("BS Pharmacy", or anything they typed). `undefined`
-  // = not loaded yet, `null` = not chosen. A localStorage copy keeps it
-  // visible on offline boots and drives the one-time "asked" flag.
+  // = not loaded yet, `null` = loaded but never chosen. The first-login
+  // picker opens once per account when this comes back null.
   const [course, setCourse] = useState<string | null | undefined>(undefined);
+  const [boardExamCode, setBoardExamCode] = useState<string | null>(null);
+  const [targetExamDate, setTargetExamDate] = useState<string | null>(null);
   const [courseModalOpen, setCourseModalOpen] = useState(false);
   const [courseSaving, setCourseSaving] = useState(false);
+  const [boardDefaultApplied, setBoardDefaultApplied] = useState(false);
 
   // All state updates happen inside the async callback (never in the effect
   // body itself — see the IOSInstallPrompt rAF pattern for why).
@@ -8310,21 +8313,31 @@ export default function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ course: value }),
       });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to save");
-      setCourse(value);
+      const nextCourse = typeof data.course === "string" && data.course ? data.course : value;
+      const nextExam = typeof data.boardExamCode === "string" && data.boardExamCode ? data.boardExamCode : null;
+      const nextDate = typeof data.targetExamDate === "string" && data.targetExamDate ? data.targetExamDate : null;
+      setCourse(nextCourse);
+      setBoardExamCode(nextExam);
+      setTargetExamDate(nextDate);
       try {
-        window.localStorage.setItem("quiztime:course", value);
+        window.localStorage.setItem("quiztime:course", nextCourse ?? "");
+        window.localStorage.setItem("quiztime:board-exam-code", nextExam ?? "");
+        window.localStorage.setItem("quiztime:target-exam-date", nextDate ?? "");
       } catch {
         /* non-fatal */
       }
       setCourseModalOpen(false);
-      showToast("Course saved — your flashcards will match it", CircleCheckBig);
+      if (nextExam) {
+        setTab("board-readiness");
+        showToast("Board exam mode ready — track your readiness", CircleCheckBig);
+      } else {
+        showToast("Course saved — your flashcards will match it", CircleCheckBig);
+      }
     } catch (err) {
-      showToast(
-        err instanceof Error && err.message ? err.message : "Failed to save",
-        CircleX
-      );
+      console.error("Failed to save course", err);
+      showToast("Could not save your course", CircleX);
     } finally {
       setCourseSaving(false);
     }
